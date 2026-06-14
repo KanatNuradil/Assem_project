@@ -4,11 +4,17 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:3001": "next dev --port 3001",
+    "dev:3003": "next dev --port 3003",
     "build": "next build",
     "start": "next start",
+    "start:3001": "next start --port 3001",
+    "start:3003": "next start --port 3003",
     "lint": "eslint"
   },
   "dependencies": {
+    "@google/genai": "^2.8.0",
+    "@supabase/supabase-js": "^2.108.1",
     "next": "16.2.9",
     "react": "19.2.4",
     "react-dom": "19.2.4"
