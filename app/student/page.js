@@ -260,21 +260,50 @@ export default function StudentDashboard() {
   const [translationAnswer, setTranslationAnswer]     = useState("құбылыс");
   const [translationIsCorrect, setTranslationIsCorrect] = useState(null);
 
+  // Speech Practice Assignment States
+  const [customSpeechWords, setCustomSpeechWords] = useState([]);
+  const [customSpeechIndex, setCustomSpeechIndex] = useState(0);
+  const [customSpokenText, setCustomSpokenText] = useState("");
+  const [customSpeechResult, setCustomSpeechResult] = useState(null);
+  const [isListeningCustomSpeech, setIsListeningCustomSpeech] = useState(false);
+  const [customSpeechAiTip, setCustomSpeechAiTip] = useState(null);
+  const [fetchingCustomSpeechTip, setFetchingCustomSpeechTip] = useState(false);
+
+  const customSpeechRecRef = useRef(null);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BLOCK 5 – PEER SPEAKING CLUB
+  // ═══════════════════════════════════════════════════════════════════════════
+  const [searchQuery, setSearchQuery]           = useState("");
+  const [searchResults, setSearchResults]       = useState([]);
+  const [selectedPeer, setSelectedPeer]         = useState(null);
+  const [peerMessages, setPeerMessages]         = useState([]);
+  const [peerChatInput, setPeerChatInput]       = useState("");
+  const [isRecordingPeerVoice, setIsRecordingPeerVoice] = useState(false);
+
+  const peerMediaRecorderRef = useRef(null);
+  const peerAudioChunksRef = useRef([]);
+  const peerChatBottomRef = useRef(null);
+
   useEffect(() => {
     if (activeBlock !== "assignments") return;
     const fetchAssignments = async () => {
       try {
-        const { data, error } = await supabase.from("assignments").select("id,title,type,content,created_at").order("created_at", { ascending: false }).limit(10);
+        let query = supabase.from("assignments").select("id,title,type,content,comment,created_at").order("created_at", { ascending: false });
+        if (studentId) {
+          query = query.or(`assigned_student_ids.is.null,assigned_student_ids.cs.{${studentId}}`);
+        }
+        const { data, error } = await query.limit(10);
         if (error) throw error;
         if (data && data.length > 0) { setAssignments(data); loadAssignmentData(data[0]); }
       } catch (err) { console.warn("Assignments fetch failed – demo data.", err.message); setAssignments([]); }
     };
     fetchAssignments();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeBlock]);
+  }, [activeBlock, studentId]);
 
   const loadAssignmentData = (a) => {
-    setActiveAssignment(a); resetMatchingWidget(); resetSentenceBuilder(); resetTranslation(); setAiFeedback(null);
+    setActiveAssignment(a); resetMatchingWidget(); resetSentenceBuilder(); resetTranslation(); resetCustomSpeechPractice(); setAiFeedback(null);
     const c = a.content;
     if (a.type === "matching" && c?.pairs) {
       const lefts   = c.pairs.map((p, i) => ({ id: `l${i}`, word: p.english }));
@@ -287,7 +316,18 @@ export default function StudentDashboard() {
       setCorrectSentence(sent); setBadges([...( c.badges.length ? c.badges : defaultInitialBadges)].sort(() => Math.random() - 0.5));
     } else if (a.type === "translation" && c?.word) {
       setTranslationAnswer((c.translation || "құбылыс").toLowerCase());
+    } else if (a.type === "speech_practice" && c?.words) {
+      setCustomSpeechWords(c.words);
     }
+  };
+
+  const resetCustomSpeechPractice = () => {
+    setCustomSpeechWords([]);
+    setCustomSpeechIndex(0);
+    setCustomSpokenText("");
+    setCustomSpeechResult(null);
+    setCustomSpeechAiTip(null);
+    setIsListeningCustomSpeech(false);
   };
 
   const saveAssignmentProgress = async (assignmentId, score, maxScore) => {
@@ -383,26 +423,139 @@ export default function StudentDashboard() {
     finally { setFetchingPronunTip(false); }
   };
 
-  const startPronunListening = () => {
+  const pronunRecRef = useRef(null);
+
+  const togglePronunListening = () => {
+    if (isListeningPronun) {
+      if (pronunRecRef.current) {
+        pronunRecRef.current.stop();
+      }
+      setIsListeningPronun(false);
+      return;
+    }
+
     setSpokenText(""); setPronunciationResult(null); setPronunAiTip(null);
     if (typeof window === "undefined") return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { alert("Web Speech Recognition not supported – use Chrome or Edge."); return; }
+    
     const recognition = new SR();
-    recognition.lang = "en-US"; recognition.interimResults = false; recognition.maxAlternatives = 1;
-    recognition.onstart  = () => setIsListeningPronun(true);
-    recognition.onend    = () => setIsListeningPronun(false);
-    recognition.onerror  = (e) => { console.error(e); setIsListeningPronun(false); };
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.continuous = true;
+
+    recognition.onstart = () => setIsListeningPronun(true);
+    recognition.onend = () => setIsListeningPronun(false);
+    recognition.onerror = (e) => { console.error(e); setIsListeningPronun(false); };
+    
     recognition.onresult = (event) => {
-      const resultText = event.results[0][0].transcript;
-      setSpokenText(resultText);
-      const cleanTarget = targetWord.toLowerCase().replace(/[^\w\s]/g, "").trim();
-      const cleanSpoken = resultText.toLowerCase().replace(/[^\w\s]/g, "").trim();
-      const correct = cleanTarget === cleanSpoken;
-      setPronunciationResult(correct ? "correct" : "incorrect");
-      fetchPronunTip(resultText, correct);
+      let resultText = "";
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          resultText += event.results[i][0].transcript;
+        }
+      }
+      if (resultText) {
+        setSpokenText(resultText);
+        const cleanTarget = targetWord.toLowerCase().replace(/[^\w\s]/g, "").trim();
+        const cleanSpoken = resultText.toLowerCase().replace(/[^\w\s]/g, "").trim();
+        const correct = cleanTarget === cleanSpoken;
+        setPronunciationResult(correct ? "correct" : "incorrect");
+        fetchPronunTip(resultText, correct);
+      }
     };
+
+    pronunRecRef.current = recognition;
     recognition.start();
+  };
+
+  // Custom Speech Practice Recording toggle
+  const playCustomSpeechTargetWord = () => {
+    const word = customSpeechWords[customSpeechIndex];
+    if (word && typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      const utt = new SpeechSynthesisUtterance(word);
+      utt.lang = "en-US"; utt.rate = 0.85;
+      window.speechSynthesis.speak(utt);
+    }
+  };
+
+  const fetchCustomSpeechTip = async (spoken, wasCorrect) => {
+    const word = customSpeechWords[customSpeechIndex];
+    if (!word) return;
+    setFetchingCustomSpeechTip(true); setCustomSpeechAiTip(null);
+    try {
+      const res = await fetch("/api/ai/pronunciation-tip", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetWord: word, spokenWord: spoken, wasCorrect }),
+      });
+      const data = await res.json();
+      if (!data.error) setCustomSpeechAiTip(data);
+    } catch (err) { console.error("Speech practice tip error:", err); }
+    finally { setFetchingCustomSpeechTip(false); }
+  };
+
+  const toggleCustomSpeechListening = () => {
+    if (isListeningCustomSpeech) {
+      if (customSpeechRecRef.current) {
+        customSpeechRecRef.current.stop();
+      }
+      setIsListeningCustomSpeech(false);
+      return;
+    }
+
+    setCustomSpokenText(""); setCustomSpeechResult(null); setCustomSpeechAiTip(null);
+    if (typeof window === "undefined") return;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { alert("Web Speech Recognition not supported – use Chrome or Edge."); return; }
+    
+    const recognition = new SR();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.continuous = true;
+
+    recognition.onstart = () => setIsListeningCustomSpeech(true);
+    recognition.onend = () => setIsListeningCustomSpeech(false);
+    recognition.onerror = (e) => { console.error(e); setIsListeningCustomSpeech(false); };
+    
+    recognition.onresult = (event) => {
+      let resultText = "";
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          resultText += event.results[i][0].transcript;
+        }
+      }
+      if (resultText) {
+        setCustomSpokenText(resultText);
+        const target = customSpeechWords[customSpeechIndex];
+        const cleanTarget = target.toLowerCase().replace(/[^\w\s]/g, "").trim();
+        const cleanSpoken = resultText.toLowerCase().replace(/[^\w\s]/g, "").trim();
+        const correct = cleanTarget === cleanSpoken;
+        setCustomSpeechResult(correct ? "correct" : "incorrect");
+        fetchCustomSpeechTip(resultText, correct);
+        
+        if (correct && activeAssignment) {
+          if (customSpeechIndex === customSpeechWords.length - 1) {
+            saveAssignmentProgress(activeAssignment.id, customSpeechWords.length, customSpeechWords.length);
+            fetchAiFeedback("speech_practice", customSpeechWords.length, customSpeechWords.length);
+          }
+        }
+      }
+    };
+
+    customSpeechRecRef.current = recognition;
+    recognition.start();
+  };
+
+  const handleNextCustomSpeechWord = () => {
+    if (customSpeechIndex < customSpeechWords.length - 1) {
+      setCustomSpeechIndex(customSpeechIndex + 1);
+      setCustomSpokenText("");
+      setCustomSpeechResult(null);
+      setCustomSpeechAiTip(null);
+    }
   };
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -421,16 +574,43 @@ export default function StudentDashboard() {
     if (chatBottomRef.current) chatBottomRef.current.scrollIntoView({ behavior: "smooth" });
   }, [messages, isAiTyping]);
 
-  const startChatDictation = () => {
+  const chatRecRef = useRef(null);
+
+  const toggleChatDictation = () => {
+    if (isListeningChat) {
+      if (chatRecRef.current) {
+        chatRecRef.current.stop();
+      }
+      setIsListeningChat(false);
+      return;
+    }
+
     if (typeof window === "undefined") return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { alert("Web Speech Recognition not supported – use Chrome or Edge."); return; }
+    
     const recognition = new SR();
-    recognition.lang = "en-US"; recognition.interimResults = false;
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.continuous = true;
+
     recognition.onstart  = () => setIsListeningChat(true);
     recognition.onend    = () => setIsListeningChat(false);
     recognition.onerror  = (e) => { console.error(e); setIsListeningChat(false); };
-    recognition.onresult = (event) => { const t = event.results[0][0].transcript; setChatInput(prev => prev ? `${prev} ${t}` : t); };
+    
+    recognition.onresult = (event) => {
+      let resultText = "";
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          resultText += event.results[i][0].transcript;
+        }
+      }
+      if (resultText) {
+        setChatInput(prev => prev ? `${prev} ${resultText}` : resultText);
+      }
+    };
+
+    chatRecRef.current = recognition;
     recognition.start();
   };
 
@@ -466,6 +646,180 @@ export default function StudentDashboard() {
   };
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // BLOCK 5 Helper Functions & Effects
+  // ═══════════════════════════════════════════════════════════════════════════
+  useEffect(() => {
+    if (activeBlock !== "peer_chat") return;
+    const fetchDefaultPeers = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("id, full_name, email, current_level")
+          .eq("role", "student")
+          .neq("id", studentId)
+          .limit(10);
+        if (error) throw error;
+        setSearchResults(data || []);
+      } catch (err) {
+        console.error("Fetch default peers error:", err);
+      }
+    };
+    if (studentId) {
+      fetchDefaultPeers();
+    }
+  }, [activeBlock, studentId]);
+
+  useEffect(() => {
+    if (!selectedPeer || activeBlock !== "peer_chat") return;
+    fetchPeerMessages(selectedPeer.id);
+    const interval = setInterval(() => {
+      fetchPeerMessages(selectedPeer.id);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [selectedPeer, activeBlock, studentId]);
+
+  useEffect(() => {
+    if (peerChatBottomRef.current) {
+      peerChatBottomRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [peerMessages]);
+
+  const handleSearchPeers = async (val) => {
+    setSearchQuery(val);
+    if (!val.trim()) {
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("id, full_name, email, current_level")
+          .eq("role", "student")
+          .neq("id", studentId)
+          .limit(10);
+        if (error) throw error;
+        setSearchResults(data || []);
+      } catch (err) {
+        console.error("Fetch default peers error:", err);
+      }
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, full_name, email, current_level")
+        .eq("role", "student")
+        .neq("id", studentId)
+        .or(`full_name.ilike.%${val}%,email.ilike.%${val}%`)
+        .limit(15);
+      if (error) throw error;
+      setSearchResults(data || []);
+    } catch (err) {
+      console.error("Search peers error:", err);
+    }
+  };
+
+  const fetchPeerMessages = async (peerId) => {
+    if (!studentId || !peerId) return;
+    try {
+      const { data, error } = await supabase
+        .from("peer_messages")
+        .select("id, sender_id, receiver_id, message_type, content, created_at")
+        .or(`sender_id.eq.${studentId},receiver_id.eq.${studentId}`)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      const filtered = (data || []).filter(msg => 
+        (msg.sender_id === studentId && msg.receiver_id === peerId) ||
+        (msg.sender_id === peerId && msg.receiver_id === studentId)
+      );
+      setPeerMessages(filtered);
+    } catch (err) {
+      console.error("Fetch peer messages error:", err);
+    }
+  };
+
+  const handleSendPeerTextMessage = async (e) => {
+    if (e) e.preventDefault();
+    if (!peerChatInput.trim() || !selectedPeer || !studentId) return;
+    const text = peerChatInput;
+    setPeerChatInput("");
+    try {
+      const { error } = await supabase.from("peer_messages").insert({
+        sender_id: studentId,
+        receiver_id: selectedPeer.id,
+        message_type: "text",
+        content: text
+      });
+      if (error) throw error;
+      fetchPeerMessages(selectedPeer.id);
+    } catch (err) {
+      console.error("Send text error:", err);
+    }
+  };
+
+  const startRecordingPeerVoice = async () => {
+    if (typeof window === "undefined" || !navigator.mediaDevices) {
+      alert("Recording is not supported in this browser.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const options = { mimeType: "audio/webm" };
+      let recorder;
+      try {
+        recorder = new MediaRecorder(stream, options);
+      } catch (e) {
+        recorder = new MediaRecorder(stream);
+      }
+      peerAudioChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          peerAudioChunksRef.current.push(e.data);
+        }
+      };
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(peerAudioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        const reader = new FileReader();
+        reader.readAsDataURL(audioBlob);
+        reader.onloadend = async () => {
+          const base64data = reader.result;
+          try {
+            const { error } = await supabase.from("peer_messages").insert({
+              sender_id: studentId,
+              receiver_id: selectedPeer.id,
+              message_type: "voice",
+              content: base64data
+            });
+            if (error) throw error;
+            fetchPeerMessages(selectedPeer.id);
+          } catch (err) {
+            console.error("Send voice error:", err);
+          }
+        };
+        stream.getTracks().forEach(track => track.stop());
+      };
+      peerMediaRecorderRef.current = recorder;
+      recorder.start();
+      setIsRecordingPeerVoice(true);
+    } catch (err) {
+      console.error("Start recording error:", err);
+      alert("Could not access microphone: " + err.message);
+    }
+  };
+
+  const stopRecordingPeerVoice = () => {
+    if (peerMediaRecorderRef.current && isRecordingPeerVoice) {
+      peerMediaRecorderRef.current.stop();
+      setIsRecordingPeerVoice(false);
+    }
+  };
+
+  const toggleRecordingPeerVoice = () => {
+    if (isRecordingPeerVoice) {
+      stopRecordingPeerVoice();
+    } else {
+      startRecordingPeerVoice();
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // RENDER
   // ═══════════════════════════════════════════════════════════════════════════
   return (
@@ -480,10 +834,7 @@ export default function StudentDashboard() {
             <span className="text-xl font-black bg-gradient-to-r from-brand-dark to-brand-primary bg-clip-text text-transparent">LingoVibe</span>
           </Link>
           <div className="flex items-center gap-3">
-            <span className="hidden sm:inline-flex text-[10px] font-bold text-violet-600 bg-violet-50 px-3 py-1.5 rounded-full border border-violet-200">✨ Gemini AI</span>
-            {dbConnected
-              ? <span className="hidden sm:inline-flex text-[10px] font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200">🟢 Supabase Live</span>
-              : <span className="hidden sm:inline-flex text-[10px] font-bold text-amber-600 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-200">⚡ Offline Mode</span>}
+            <span className="hidden sm:inline-flex text-[10px] font-bold text-violet-600 bg-violet-50 px-3 py-1.5 rounded-full border border-violet-200">✨ AI Bot</span>
             <span className="text-xs text-brand-dark/50 font-bold bg-brand-bg px-3 py-1.5 rounded-full hidden sm:inline-block">🎓 Student</span>
             <button onClick={handleLogout} className="text-xs text-red-500 font-bold hover:bg-red-50 border border-red-100 px-3.5 py-2 rounded-xl transition-all">Sign Out</button>
           </div>
@@ -529,7 +880,7 @@ export default function StudentDashboard() {
                 <div className="flex items-center justify-between border-b border-purple-50 pb-5 mb-6">
                   <div>
                     <h3 className="text-xl font-black text-brand-dark flex items-center gap-2">English Level Diagnostics <span className="text-xs font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full border border-violet-100">✨ AI Assessed</span></h3>
-                    <p className="text-xs text-brand-dark/50 mt-1">20 progressive questions → Gemini AI analyses your grammar profile</p>
+                    <p className="text-xs text-brand-dark/50 mt-1">20 progressive questions → AI Bot analyses your grammar profile</p>
                   </div>
                   {!quizFinished && <span className="text-sm font-bold text-brand-primary bg-brand-bg px-3.5 py-1 rounded-full">{quizIndex + 1} / {quizQuestions.length}</span>}
                 </div>
@@ -542,7 +893,7 @@ export default function StudentDashboard() {
                       <div className="relative w-20 h-20 rounded-full bg-gradient-to-br from-brand-primary to-brand-light flex items-center justify-center text-3xl shadow-xl">✨</div>
                     </div>
                     <div className="text-center">
-                      <h4 className="text-lg font-bold text-brand-dark">Gemini AI is analysing your answers…</h4>
+                      <h4 className="text-lg font-bold text-brand-dark">AI Bot is analysing your answers…</h4>
                       <p className="text-sm text-brand-dark/50 mt-1">Building your personalised English profile</p>
                     </div>
                     <div className="flex gap-2">
@@ -638,7 +989,7 @@ export default function StudentDashboard() {
                     {aiResult.encouragement && (
                       <div className="p-5 rounded-2xl bg-violet-50 border border-violet-100 text-center">
                         <p className="text-sm font-semibold text-violet-700 italic">{`"${aiResult.encouragement}"`}</p>
-                        <p className="text-xs text-violet-400 font-bold mt-2">— Coach Vibe (Gemini AI)</p>
+                        <p className="text-xs text-violet-400 font-bold mt-2">— Coach Vibe (AI Bot)</p>
                       </div>
                     )}
 
@@ -654,7 +1005,7 @@ export default function StudentDashboard() {
                     <span className="text-5xl block mb-4">🏆</span>
                     <h3 className="text-2xl font-black">Test Completed!</h3>
                     <p className="text-white/80 mt-2">Score: {quizScore}/20</p>
-                    <p className="text-xs text-white/60 mt-3">AI analysis unavailable — check your GEMINI_API_KEY in .env.local</p>
+                    <p className="text-xs text-white/60 mt-3">AI analysis unavailable — check your API key in .env.local</p>
                     <button onClick={resetQuiz} className="mt-5 px-6 py-2.5 rounded-full bg-white text-brand-dark font-bold text-xs hover:bg-brand-bg transition-all">Retake</button>
                   </div>
                 )}
@@ -666,23 +1017,34 @@ export default function StudentDashboard() {
               <div className="space-y-8 max-w-4xl mx-auto">
                 <div className="text-center max-w-xl mx-auto">
                   <h3 className="text-2xl font-black text-brand-dark">Homework Portal</h3>
-                  <p className="text-sm text-brand-dark/65 mt-1.5">{assignments.length > 0 ? `${assignments.length} assignment(s) from your teacher.` : "Review interactive exercise templates."}</p>
+                  <p className="text-sm text-brand-dark/65 mt-1.5">{assignments.length > 0 ? `${assignments.length} assignment(s) assigned to you.` : "No assignments published for you yet."}</p>
                 </div>
                 {assignments.length > 1 && (
                   <div className="flex flex-wrap gap-3 justify-center">
                     {assignments.map(a => (
-                      <button key={a.id} onClick={() => loadAssignmentData(a)} className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all ${activeAssignment?.id === a.id ? "bg-brand-primary text-white border-brand-primary" : "bg-white text-brand-dark border-purple-100 hover:border-brand-primary/40"}`}>{a.title}</button>
+                      <button key={a.id} onClick={() => loadAssignmentData(a)} className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all ${activeAssignment?.id === a.id ? "bg-brand-primary text-white border-brand-primary" : "bg-white text-brand-dark border-purple-100 hover:border-brand-primary/40"}`}>{a.title} ({a.type})</button>
                     ))}
+                  </div>
+                )}
+
+                {/* Comment note for student */}
+                {activeAssignment?.comment && (
+                  <div className="p-4 bg-white border border-purple-100 rounded-3xl text-xs font-medium text-brand-dark/75 flex items-start gap-3 shadow-sm max-w-xl mx-auto">
+                    <span className="text-lg leading-none shrink-0">💬</span>
+                    <div>
+                      <span className="font-bold text-brand-primary block mb-0.5">Teacher's Note:</span>
+                      <p className="leading-relaxed font-semibold">{activeAssignment.comment}</p>
+                    </div>
                   </div>
                 )}
 
                 {/* AI Feedback Panel */}
                 {(fetchingFeedback || aiFeedback) && (
-                  <div className={`p-5 rounded-2xl border transition-all ${fetchingFeedback ? "bg-violet-50 border-violet-100" : "bg-violet-50 border-violet-100"}`}>
+                  <div className={`p-5 rounded-3xl border border-violet-100 bg-violet-50/60 max-w-xl mx-auto`}>
                     {fetchingFeedback ? (
                       <div className="flex items-center gap-3 text-violet-600">
                         <div className="w-5 h-5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
-                        <span className="text-xs font-bold">Coach Vibe is reviewing your work…</span>
+                        <span className="text-xs font-bold">AI Coach is reviewing your work…</span>
                       </div>
                     ) : aiFeedback && (
                       <div className="space-y-2">
@@ -690,109 +1052,199 @@ export default function StudentDashboard() {
                           <span className="text-xl">{aiFeedback.emoji}</span>
                           <span className="font-bold text-violet-800 text-sm">{aiFeedback.headline}</span>
                         </div>
-                        <p className="text-xs text-violet-700/80 leading-relaxed">{aiFeedback.feedback}</p>
+                        <p className="text-xs text-violet-700/80 leading-relaxed font-semibold">{aiFeedback.feedback}</p>
                         {aiFeedback.tips?.map((tip, i) => <p key={i} className="text-xs text-violet-600 font-medium">💡 {tip}</p>)}
-                        {aiFeedback.nextStep && <p className="text-xs text-violet-500 italic mt-1">Next: {aiFeedback.nextStep}</p>}
+                        {aiFeedback.nextStep && <p className="text-xs text-violet-500 italic mt-1 font-semibold">Next: {aiFeedback.nextStep}</p>}
                       </div>
                     )}
                   </div>
                 )}
 
                 {/* Exercise A: Word Matching */}
-                <div className="bg-white p-6 md:p-8 rounded-3xl border border-purple-100 shadow-sm">
-                  <div className="flex justify-between items-center pb-4 border-b border-purple-50 mb-6">
-                    <div>
-                      <h4 className="font-bold text-brand-dark text-base">{activeAssignment?.type === "matching" ? activeAssignment.title : "Exercise A: Word Matching"}</h4>
-                      <p className="text-xs text-brand-dark/55 mt-0.5">Match each vocabulary word with its definition. AI feedback on completion.</p>
-                    </div>
-                    {matchingSuccess && <span className="text-xs font-bold text-brand-success bg-brand-success/15 px-3 py-1 rounded-full">Completed ✓</span>}
-                  </div>
-                  {matchingSuccess ? (
-                    <div className="p-6 rounded-2xl bg-brand-success/10 border border-brand-success/20 text-center space-y-3">
-                      <span className="text-3xl block">🎉</span>
-                      <h5 className="font-bold text-brand-success text-base">All pairs matched!</h5>
-                      <button onClick={resetMatchingWidget} className="px-4 py-2 rounded-xl bg-white border border-brand-success/35 text-xs text-brand-success font-bold transition-all">Reset</button>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {matchingError && <div className="p-3 bg-red-50 text-red-500 text-xs font-bold border border-red-100 rounded-xl text-center">❌ Incorrect pair. Try again!</div>}
-                      <div className="grid grid-cols-2 gap-6">
-                        <div className="space-y-3">
-                          <span className="block text-[10px] font-bold text-brand-dark/50 uppercase tracking-wider">Vocabulary</span>
-                          {matchingLeft.map((item) => {
-                            const isMatched = matchedPairs.some(p => p.leftId === item.id);
-                            const isSel = selectedLeft === item.id;
-                            return (
-                              <button key={item.id} disabled={isMatched} onClick={() => handleMatchingClick("left", item.id)}
-                                className={`w-full p-4 rounded-xl border text-left text-sm font-bold transition-all ${isMatched ? "bg-brand-success/15 text-brand-success border-brand-success/20 cursor-not-allowed opacity-80" : isSel ? "bg-brand-primary text-white border-brand-primary shadow-md" : "bg-brand-soft/60 hover:bg-brand-bg text-brand-dark border-purple-100/60"}`}>
-                                {item.word}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <div className="space-y-3">
-                          <span className="block text-[10px] font-bold text-brand-dark/50 uppercase tracking-wider">Definition</span>
-                          {matchingRight.map((item) => {
-                            const isMatched = matchedPairs.some(p => p.rightId === item.id);
-                            return (
-                              <button key={item.id} disabled={isMatched || !selectedLeft} onClick={() => handleMatchingClick("right", item.id)}
-                                className={`w-full p-4 rounded-xl border text-left text-xs font-semibold transition-all ${isMatched ? "bg-brand-success/15 text-brand-success border-brand-success/20 cursor-not-allowed opacity-80" : !selectedLeft ? "bg-brand-soft/20 text-brand-dark/40 border-purple-100/30 cursor-not-allowed" : "bg-brand-soft/60 hover:bg-brand-bg text-brand-dark border-purple-100/60 hover:border-brand-primary/45"}`}>
-                                {item.word}
-                              </button>
-                            );
-                          })}
-                        </div>
+                {activeAssignment?.type === "matching" && (
+                  <div className="bg-white p-6 md:p-8 rounded-3xl border border-purple-100 shadow-sm max-w-xl mx-auto">
+                    <div className="flex justify-between items-center pb-4 border-b border-purple-50 mb-6">
+                      <div>
+                        <h4 className="font-bold text-brand-dark text-base">{activeAssignment?.title || "Exercise A: Word Matching"}</h4>
+                        <p className="text-xs text-brand-dark/55 mt-0.5">Match each vocabulary word with its definition. AI feedback on completion.</p>
                       </div>
+                      {matchingSuccess && <span className="text-xs font-bold text-brand-success bg-brand-success/15 px-3 py-1 rounded-full">Completed ✓</span>}
                     </div>
-                  )}
-                </div>
-
-                {/* Exercise B: Sentence Builder */}
-                <div className="bg-white p-6 md:p-8 rounded-3xl border border-purple-100 shadow-sm">
-                  <div className="flex justify-between items-center pb-4 border-b border-purple-50 mb-6">
-                    <div><h4 className="font-bold text-brand-dark text-base">Exercise B: Sentence Builder</h4><p className="text-xs text-brand-dark/55 mt-0.5">Click word badges to build the correct sentence.</p></div>
-                    {sentenceIsCorrect === true && <span className="text-xs font-bold text-brand-success bg-brand-success/15 px-3 py-1 rounded-full">Completed ✓</span>}
-                  </div>
-                  <div className="space-y-6">
-                    <div className={`p-5 min-h-20 rounded-2xl border flex flex-wrap gap-2 items-center transition-all ${sentenceIsCorrect === true ? "bg-brand-success/10 border-brand-success/30" : sentenceIsCorrect === false ? "bg-red-50 border-red-200" : "bg-brand-soft/40 border-purple-100/80"}`}>
-                      {constructedSentence.length === 0 ? <span className="text-xs text-brand-dark/35 italic">Constructed sentence appears here…</span>
-                        : constructedSentence.map((word, idx) => (
-                          <button key={idx} onClick={() => handleRemoveBadge(word, idx)} className="px-3.5 py-2 rounded-xl bg-white border border-brand-light/30 shadow-sm text-xs font-bold text-brand-dark hover:bg-red-50 hover:border-red-200 transition-all flex items-center gap-1.5">{word}<span className="text-[9px] text-brand-dark/30">×</span></button>
-                        ))}
-                    </div>
-                    {badges.length > 0 && (
-                      <div className="space-y-2">
-                        <span className="block text-[10px] font-bold text-brand-dark/50 uppercase tracking-wider">Word Bank</span>
-                        <div className="flex flex-wrap gap-2.5">
-                          {badges.map((word, idx) => <button key={idx} onClick={() => handleBadgeClick(word, idx)} className="px-4 py-2.5 rounded-xl bg-brand-bg text-brand-primary border border-brand-light/25 hover:border-brand-primary hover:bg-white text-xs font-bold transition-all hover:shadow-sm">{word}</button>)}
+                    {matchingSuccess ? (
+                      <div className="p-6 rounded-2xl bg-brand-success/10 border border-brand-success/20 text-center space-y-3">
+                        <span className="text-3xl block">🎉</span>
+                        <h5 className="font-bold text-brand-success text-base">All pairs matched!</h5>
+                        <button onClick={resetMatchingWidget} className="px-4 py-2 rounded-xl bg-white border border-brand-success/35 text-xs text-brand-success font-bold transition-all">Reset</button>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {matchingError && <div className="p-3 bg-red-50 text-red-500 text-xs font-bold border border-red-100 rounded-xl text-center">❌ Incorrect pair. Try again!</div>}
+                        <div className="grid grid-cols-2 gap-6">
+                          <div className="space-y-3">
+                            <span className="block text-[10px] font-bold text-brand-dark/50 uppercase tracking-wider">Vocabulary</span>
+                            {matchingLeft.map((item) => {
+                              const isMatched = matchedPairs.some(p => p.leftId === item.id);
+                              const isSel = selectedLeft === item.id;
+                              return (
+                                <button key={item.id} disabled={isMatched} onClick={() => handleMatchingClick("left", item.id)}
+                                  className={`w-full p-4 rounded-xl border text-left text-sm font-bold transition-all ${isMatched ? "bg-brand-success/15 text-brand-success border-brand-success/20 cursor-not-allowed opacity-80" : isSel ? "bg-brand-primary text-white border-brand-primary shadow-md" : "bg-brand-soft/60 hover:bg-brand-bg text-brand-dark border-purple-100/60"}`}>
+                                  {item.word}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <div className="space-y-3">
+                            <span className="block text-[10px] font-bold text-brand-dark/50 uppercase tracking-wider">Definition</span>
+                            {matchingRight.map((item) => {
+                              const isMatched = matchedPairs.some(p => p.rightId === item.id);
+                              return (
+                                <button key={item.id} disabled={isMatched || !selectedLeft} onClick={() => handleMatchingClick("right", item.id)}
+                                  className={`w-full p-4 rounded-xl border text-left text-xs font-semibold transition-all ${isMatched ? "bg-brand-success/15 text-brand-success border-brand-success/20 cursor-not-allowed opacity-80" : !selectedLeft ? "bg-brand-soft/20 text-brand-dark/40 border-purple-100/30 cursor-not-allowed" : "bg-brand-soft/60 hover:bg-brand-bg text-brand-dark border-purple-100/60 hover:border-brand-primary/45"}`}>
+                                  {item.word}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                       </div>
                     )}
-                    <div className="flex items-center gap-4 flex-wrap">
-                      <button onClick={checkSentenceBuilder} disabled={constructedSentence.length === 0} className={`px-6 py-3 rounded-xl text-xs font-bold text-white shadow-md transition-all ${constructedSentence.length > 0 ? "bg-brand-primary hover:bg-brand-light" : "bg-purple-200 cursor-not-allowed"}`}>Check Ordering</button>
-                      <button onClick={resetSentenceBuilder} className="px-6 py-3 rounded-xl text-xs font-semibold text-brand-dark/70 border border-purple-100 hover:bg-brand-bg transition-all">Clear</button>
-                      {sentenceIsCorrect === true  && <span className="text-xs font-bold text-brand-success">✨ Perfect!</span>}
-                      {sentenceIsCorrect === false && <span className="text-xs font-bold text-red-500">❌ Not quite — rearrange and try again.</span>}
+                  </div>
+                )}
+
+                {/* Exercise B: Sentence Builder */}
+                {activeAssignment?.type === "sentence" && (
+                  <div className="bg-white p-6 md:p-8 rounded-3xl border border-purple-100 shadow-sm max-w-xl mx-auto">
+                    <div className="flex justify-between items-center pb-4 border-b border-purple-50 mb-6">
+                      <div><h4 className="font-bold text-brand-dark text-base">Exercise B: Sentence Builder</h4><p className="text-xs text-brand-dark/55 mt-0.5">Click word badges to build the correct sentence.</p></div>
+                      {sentenceIsCorrect === true && <span className="text-xs font-bold text-brand-success bg-brand-success/15 px-3 py-1 rounded-full">Completed ✓</span>}
+                    </div>
+                    <div className="space-y-6">
+                      <div className={`p-5 min-h-20 rounded-2xl border flex flex-wrap gap-2 items-center transition-all ${sentenceIsCorrect === true ? "bg-brand-success/10 border-brand-success/30" : sentenceIsCorrect === false ? "bg-red-50 border-red-200" : "bg-brand-soft/40 border-purple-100/80"}`}>
+                        {constructedSentence.length === 0 ? <span className="text-xs text-brand-dark/35 italic">Constructed sentence appears here…</span>
+                          : constructedSentence.map((word, idx) => (
+                            <button key={idx} onClick={() => handleRemoveBadge(word, idx)} className="px-3.5 py-2 rounded-xl bg-white border border-brand-light/30 shadow-sm text-xs font-bold text-brand-dark hover:bg-red-50 hover:border-red-200 transition-all flex items-center gap-1.5">{word}<span className="text-[9px] text-brand-dark/30">×</span></button>
+                          ))}
+                      </div>
+                      {badges.length > 0 && (
+                        <div className="space-y-2">
+                          <span className="block text-[10px] font-bold text-brand-dark/50 uppercase tracking-wider">Word Bank</span>
+                          <div className="flex flex-wrap gap-2.5">
+                            {badges.map((word, idx) => <button key={idx} onClick={() => handleBadgeClick(word, idx)} className="px-4 py-2.5 rounded-xl bg-brand-bg text-brand-primary border border-brand-light/25 hover:border-brand-primary hover:bg-white text-xs font-bold transition-all hover:shadow-sm">{word}</button>)}
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-4 flex-wrap">
+                        <button onClick={checkSentenceBuilder} disabled={constructedSentence.length === 0} className={`px-6 py-3 rounded-xl text-xs font-bold text-white shadow-md transition-all ${constructedSentence.length > 0 ? "bg-brand-primary hover:bg-brand-light" : "bg-purple-200 cursor-not-allowed"}`}>Check Ordering</button>
+                        <button onClick={resetSentenceBuilder} className="px-6 py-3 rounded-xl text-xs font-semibold text-brand-dark/70 border border-purple-100 hover:bg-brand-bg transition-all">Clear</button>
+                        {sentenceIsCorrect === true  && <span className="text-xs font-bold text-brand-success">✨ Perfect!</span>}
+                        {sentenceIsCorrect === false && <span className="text-xs font-bold text-red-500">❌ Not quite — rearrange and try again.</span>}
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* Exercise C: Translation */}
-                <div className="bg-white p-6 md:p-8 rounded-3xl border border-purple-100 shadow-sm">
-                  <div className="flex justify-between items-center pb-4 border-b border-purple-50 mb-6">
-                    <div><h4 className="font-bold text-brand-dark text-base">Exercise C: Vocabulary Translation</h4><p className="text-xs text-brand-dark/55 mt-0.5">Translate <strong>{'"Phenomenon"'}</strong> into your language.</p></div>
-                    {translationIsCorrect === true && <span className="text-xs font-bold text-brand-success bg-brand-success/15 px-3 py-1 rounded-full">Completed ✓</span>}
-                  </div>
-                  <form onSubmit={checkTranslation} className="space-y-4">
-                    <div className="flex flex-col sm:flex-row gap-4">
-                      <input type="text" value={translationInput} onChange={(e) => setTranslationInput(e.target.value)} placeholder="Type your translation…"
-                        className={`flex-1 px-4 py-3.5 rounded-2xl border text-sm font-medium focus:outline-none transition-all text-brand-dark ${translationIsCorrect === true ? "border-brand-success bg-brand-success/5" : translationIsCorrect === false ? "border-red-300 bg-red-50/20" : "border-purple-100 bg-brand-soft/50 focus:border-brand-primary focus:bg-white"}`} />
-                      <button type="submit" className="px-6 py-3.5 rounded-2xl bg-brand-primary hover:bg-brand-light text-white font-bold text-xs shadow-md transition-all shrink-0">Submit</button>
+                {activeAssignment?.type === "translation" && (
+                  <div className="bg-white p-6 md:p-8 rounded-3xl border border-purple-100 shadow-sm max-w-xl mx-auto">
+                    <div className="flex justify-between items-center pb-4 border-b border-purple-50 mb-6">
+                      <div><h4 className="font-bold text-brand-dark text-base">Exercise C: Vocabulary Translation</h4><p className="text-xs text-brand-dark/55 mt-0.5">Translate <strong>{`"${activeAssignment?.content?.word || "Phenomenon"}"`}</strong> into your language.</p></div>
+                      {translationIsCorrect === true && <span className="text-xs font-bold text-brand-success bg-brand-success/15 px-3 py-1 rounded-full">Completed ✓</span>}
                     </div>
-                    {translationIsCorrect === true  && <p className="text-xs font-bold text-brand-success">✅ Perfect translation!</p>}
-                    {translationIsCorrect === false && <div className="flex items-center justify-between"><p className="text-xs font-bold text-red-500">❌ Incorrect. Think of the natural spelling.</p><button type="button" onClick={resetTranslation} className="text-xs font-bold text-brand-primary hover:underline">Clear</button></div>}
-                  </form>
-                </div>
+                    <form onSubmit={checkTranslation} className="space-y-4">
+                      <div className="flex flex-col sm:flex-row gap-4">
+                        <input type="text" value={translationInput} onChange={(e) => setTranslationInput(e.target.value)} placeholder="Type your translation…"
+                          className={`flex-1 px-4 py-3.5 rounded-2xl border text-sm font-medium focus:outline-none transition-all text-brand-dark ${translationIsCorrect === true ? "border-brand-success bg-brand-success/5" : translationIsCorrect === false ? "border-red-300 bg-red-50/20" : "border-purple-100 bg-brand-soft/50 focus:border-brand-primary focus:bg-white"}`} />
+                        <button type="submit" className="px-6 py-3.5 rounded-2xl bg-brand-primary hover:bg-brand-light text-white font-bold text-xs shadow-md transition-all shrink-0">Submit</button>
+                      </div>
+                      {translationIsCorrect === true  && <p className="text-xs font-bold text-brand-success">✅ Perfect translation!</p>}
+                      {translationIsCorrect === false && <div className="flex items-center justify-between"><p className="text-xs font-bold text-red-500">❌ Incorrect. Think of the natural spelling.</p><button type="button" onClick={resetTranslation} className="text-xs font-bold text-brand-primary hover:underline">Clear</button></div>}
+                    </form>
+                  </div>
+                )}
+
+                {/* Exercise D: Speech Practice */}
+                {activeAssignment?.type === "speech_practice" && (
+                  <div className="bg-white p-6 md:p-8 rounded-3xl border border-purple-100 shadow-sm max-w-xl mx-auto space-y-5">
+                    <div className="text-center pb-5 border-b border-purple-50 mb-6">
+                      <h4 className="text-xl font-bold text-brand-dark flex items-center justify-center gap-2">Speech Practice</h4>
+                      <p className="text-xs text-brand-dark/50 mt-1">Pronounce each word carefully. Complete all words to finish the task.</p>
+                    </div>
+                    {customSpeechWords.length === 0 ? (
+                      <p className="text-xs text-center text-brand-dark/50 italic">No speech words defined for this assignment.</p>
+                    ) : (
+                      <div className="space-y-6 text-center">
+                        <div className={`p-8 rounded-3xl border transition-all ${customSpeechResult === "correct" ? "bg-brand-success/10 border-brand-success/30" : customSpeechResult === "incorrect" ? "bg-red-50 border-red-200" : "bg-brand-bg/50 border-purple-100/50"}`}>
+                          <p className="text-xs font-bold text-brand-primary uppercase tracking-widest mb-1.5">Word {customSpeechIndex + 1} of {customSpeechWords.length}</p>
+                          <h4 className="text-4xl font-black text-brand-dark tracking-tight">{customSpeechWords[customSpeechIndex]}</h4>
+                          {customSpokenText && (
+                            <div className="mt-5 border-t border-purple-50/50 pt-4">
+                              <p className="text-[10px] font-bold text-brand-dark/40 uppercase">You Said:</p>
+                              <p className={`text-base font-bold mt-1 ${customSpeechResult === "correct" ? "text-brand-success" : "text-red-500"}`}>{`"${customSpokenText}"`}</p>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex justify-center items-center gap-6">
+                          <button onClick={playCustomSpeechTargetWord} type="button" title="Hear it" className="w-16 h-16 rounded-full bg-brand-bg text-brand-primary border border-brand-light/35 flex items-center justify-center text-xl shadow-md hover:scale-105 transition-transform">🔊</button>
+                          <button onClick={toggleCustomSpeechListening} type="button"
+                            className={`w-20 h-20 rounded-full flex items-center justify-center text-3xl shadow-xl transition-all relative ${isListeningCustomSpeech ? "bg-red-500 text-white animate-pulse shadow-red-500/20" : "bg-brand-primary hover:bg-brand-light text-white shadow-brand-primary/25 hover:scale-105"}`}>
+                            {isListeningCustomSpeech ? <span className="flex items-center justify-center"><span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-ping" />⏹️</span> : "🎙️"}
+                          </button>
+                          {customSpeechIndex < customSpeechWords.length - 1 && (
+                            <button onClick={handleNextCustomSpeechWord} type="button" title="Next word" className="w-16 h-16 rounded-full bg-brand-bg text-brand-primary border border-brand-light/35 flex items-center justify-center text-lg shadow-md hover:scale-105 transition-transform">➡️</button>
+                          )}
+                        </div>
+                        <div className="h-6">
+                          {isListeningCustomSpeech && <p className="text-xs font-bold text-red-500 animate-pulse">🎤 Listening… Click button again to stop!</p>}
+                          {customSpeechResult === "correct"   && (
+                            <p className="text-xs font-bold text-brand-success">
+                              {customSpeechIndex === customSpeechWords.length - 1 ? "🎉 All words completed!" : "✨ Perfect pronunciation! Click ➡️ to proceed."}
+                            </p>
+                          )}
+                          {customSpeechResult === "incorrect" && <p className="text-xs font-bold text-red-500">❌ Not quite — see AI tip below or try again.</p>}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Custom Speech AI Tip Card */}
+                    {(fetchingCustomSpeechTip || customSpeechAiTip) && (
+                      <div className="bg-white rounded-3xl border border-violet-100 shadow-md p-6 text-left">
+                        {fetchingCustomSpeechTip ? (
+                          <div className="flex items-center gap-3 text-violet-600">
+                            <div className="w-5 h-5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
+                            <span className="text-xs font-bold">AI Coach is building your phonetic tip…</span>
+                          </div>
+                        ) : customSpeechAiTip && (
+                          <div className="space-y-4">
+                            <div className="flex items-center gap-2 border-b border-violet-50 pb-3">
+                              <span className="text-xl">🎯</span>
+                              <h5 className="font-bold text-brand-dark text-sm">AI Pronunciation Guide</h5>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="bg-brand-bg p-3 rounded-xl">
+                                <p className="text-[10px] font-bold text-brand-dark/50 uppercase mb-1">IPA Phonetic</p>
+                                <p className="font-black text-brand-primary text-base">{customSpeechAiTip.phonetic}</p>
+                              </div>
+                              <div className="bg-brand-bg p-3 rounded-xl">
+                                <p className="text-[10px] font-bold text-brand-dark/50 uppercase mb-1">Syllables</p>
+                                <p className="font-black text-brand-dark text-sm">{customSpeechAiTip.syllables}</p>
+                              </div>
+                            </div>
+                            <div className="bg-violet-50 p-4 rounded-xl border border-violet-100">
+                              <p className="text-[10px] font-bold text-violet-500 uppercase mb-1">AI Coach Says</p>
+                              <p className="text-xs text-violet-800 font-medium leading-relaxed font-semibold">{customSpeechAiTip.tip}</p>
+                            </div>
+                            {customSpeechAiTip.mouthPosition && (
+                              <div className="bg-amber-50 p-3 rounded-xl border border-amber-100">
+                                <p className="text-[10px] font-bold text-amber-600 uppercase mb-1">Mouth Position</p>
+                                <p className="text-xs text-amber-800 font-medium font-semibold">{customSpeechAiTip.mouthPosition}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

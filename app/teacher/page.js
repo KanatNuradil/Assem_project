@@ -26,11 +26,14 @@ export default function TeacherDashboard() {
 
   // Form states for creating assignments
   const [assignmentTitle, setAssignmentTitle] = useState("");
-  const [assignmentType, setAssignmentType] = useState("matching"); // "matching", "sentence", "translation"
+  const [assignmentType, setAssignmentType] = useState("matching"); // "matching", "sentence", "translation", "speech_practice"
   const [questionDetails, setQuestionDetails] = useState("");
   const [sentenceWords, setSentenceWords] = useState("");
   const [targetWord, setTargetWord] = useState("");
   const [translationAnswer, setTranslationAnswer] = useState("");
+  const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+  const [assignmentComment, setAssignmentComment] = useState("");
+  const [speechWords, setSpeechWords] = useState("");
   
   // Notification states
   const [toastMessage, setToastMessage] = useState("");
@@ -149,6 +152,11 @@ export default function TeacherDashboard() {
       return;
     }
 
+    if (selectedStudentIds.length === 0) {
+      alert("Please select at least one student for this assignment.");
+      return;
+    }
+
     // Prepare JSON content structure
     let contentPayload = {};
     if (assignmentType === "matching") {
@@ -173,6 +181,11 @@ export default function TeacherDashboard() {
         word: targetWord || "Phenomenon",
         translation: translationAnswer || "құбылыс"
       };
+    } else if (assignmentType === "speech_practice") {
+      contentPayload = {
+        instructions: "Listen and pronounce each word carefully.",
+        words: speechWords ? speechWords.split(",").map(w => w.trim()).filter(Boolean).slice(0, 10) : []
+      };
     }
 
     try {
@@ -186,7 +199,9 @@ export default function TeacherDashboard() {
             teacher_id: teacherId,
             title: assignmentTitle,
             type: assignmentType,
-            content: contentPayload
+            content: contentPayload,
+            assigned_student_ids: selectedStudentIds,
+            comment: assignmentComment ? assignmentComment : null
           });
 
         if (error) throw error;
@@ -203,6 +218,9 @@ export default function TeacherDashboard() {
       setSentenceWords("");
       setTargetWord("");
       setTranslationAnswer("");
+      setSpeechWords("");
+      setAssignmentComment("");
+      setSelectedStudentIds([]);
     } catch (err) {
       console.error("Assignment Publish Error:", err);
       alert(`Failed to publish assignment: ${err.message}`);
@@ -321,15 +339,7 @@ export default function TeacherDashboard() {
             </h2>
           </div>
           <div className="flex items-center gap-3 text-sm font-semibold text-brand-dark/60">
-            {isDbFallback ? (
-              <span className="px-3 py-1 bg-amber-50 text-amber-600 rounded-full text-xs font-bold border border-amber-200">
-                ⚠️ SQL Offline (Fallback Data)
-              </span>
-            ) : (
-              <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-xs font-bold border border-emerald-200">
-                🟢 Supabase Database Connected
-              </span>
-            )}
+            {/* Database status pill removed */}
           </div>
         </header>
 
@@ -494,6 +504,55 @@ export default function TeacherDashboard() {
                     />
                   </div>
 
+                  {/* Select Target Students */}
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-brand-dark/60 mb-2">
+                      Assign to Students
+                    </label>
+                    <div className="p-4 rounded-2xl border border-purple-100 bg-brand-soft/50 max-h-40 overflow-y-auto space-y-2">
+                      <label className="flex items-center gap-2 text-xs font-bold text-brand-dark cursor-pointer pb-2 border-b border-purple-100/50">
+                        <input
+                          type="checkbox"
+                          checked={students.length > 0 && selectedStudentIds.length === students.length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedStudentIds(students.map(s => s.id));
+                            } else {
+                              setSelectedStudentIds([]);
+                            }
+                          }}
+                          className="rounded text-brand-primary focus:ring-brand-primary"
+                        />
+                        <span>Select All Students ({students.length})</span>
+                      </label>
+                      
+                      {students.map((student) => {
+                        const isChecked = selectedStudentIds.includes(student.id);
+                        return (
+                          <label key={student.id} className="flex items-center gap-2 text-xs text-brand-dark cursor-pointer font-medium hover:text-brand-primary transition-colors">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => {
+                                if (isChecked) {
+                                  setSelectedStudentIds(selectedStudentIds.filter(id => id !== student.id));
+                                } else {
+                                  setSelectedStudentIds([...selectedStudentIds, student.id]);
+                                }
+                              }}
+                              className="rounded text-brand-primary focus:ring-brand-primary"
+                            />
+                            <span>{student.name} ({student.email})</span>
+                          </label>
+                        );
+                      })}
+                      
+                      {students.length === 0 && (
+                        <p className="text-xs text-brand-dark/40 italic">No students registered yet.</p>
+                      )}
+                    </div>
+                  </div>
+
                   {/* Type Select */}
                   <div>
                     <label htmlFor="type" className="block text-xs font-bold uppercase tracking-wider text-brand-dark/60 mb-2">
@@ -508,6 +567,7 @@ export default function TeacherDashboard() {
                       <option value="matching">🎴 Word Matching Game</option>
                       <option value="sentence">🧩 Sentence Builder</option>
                       <option value="translation">🌐 Word Translation</option>
+                      <option value="speech_practice">🗣️ Speech Practice (10 Words)</option>
                     </select>
                   </div>
 
@@ -627,6 +687,43 @@ export default function TeacherDashboard() {
                       </div>
                     </div>
                   )}
+
+                  {assignmentType === "speech_practice" && (
+                    <div className="p-5 rounded-2xl bg-brand-bg/40 border border-brand-primary/10 space-y-4">
+                      <h4 className="text-xs font-bold text-brand-primary uppercase tracking-wider">Speech Practice Parameters</h4>
+                      <p className="text-xs text-brand-dark/60 leading-normal">
+                        Enter up to 10 vocabulary words or short phrases for the student to practice pronouncing.
+                      </p>
+                      
+                      <div>
+                        <label htmlFor="speech-words" className="block text-[10px] font-bold text-brand-dark/60 uppercase mb-1.5">Words for Pronunciation (comma separated, max 10)</label>
+                        <input
+                          type="text"
+                          id="speech-words"
+                          value={speechWords}
+                          onChange={(e) => setSpeechWords(e.target.value)}
+                          placeholder="e.g. Beautiful, Literature, Enthusiastic, Phenomenon"
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-purple-100 bg-brand-soft/50 focus:outline-none focus:border-brand-primary focus:bg-white transition-all text-xs text-brand-dark placeholder-brand-dark/30 font-medium"
+                          required
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Teacher's Comment */}
+                  <div>
+                    <label htmlFor="comment" className="block text-xs font-bold uppercase tracking-wider text-brand-dark/60 mb-2">
+                      Comment / Note for Students
+                    </label>
+                    <textarea
+                      id="comment"
+                      rows={2}
+                      value={assignmentComment}
+                      onChange={(e) => setAssignmentComment(e.target.value)}
+                      placeholder="e.g. Please finish this before our next speaking session on Friday."
+                      className="w-full px-4 py-3.5 rounded-2xl border border-purple-100 bg-brand-soft/50 focus:outline-none focus:border-brand-primary focus:bg-white transition-all text-brand-dark text-sm placeholder-brand-dark/30 font-medium"
+                    />
+                  </div>
 
                   {/* Publish button */}
                   <button

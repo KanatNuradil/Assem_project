@@ -21,12 +21,14 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
 -- 1b. assignments — teacher-created exercises
 CREATE TABLE IF NOT EXISTS public.assignments (
-    id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    teacher_id UUID        NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    title      TEXT        NOT NULL,
-    type       TEXT        NOT NULL CHECK (type IN ('matching', 'sentence', 'translation')),
-    content    JSONB       NOT NULL DEFAULT '{}',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+    id                   UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    teacher_id           UUID        NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    title                TEXT        NOT NULL,
+    type                 TEXT        NOT NULL CHECK (type IN ('matching', 'sentence', 'translation', 'speech_practice')),
+    content              JSONB       NOT NULL DEFAULT '{}',
+    assigned_student_ids UUID[]      DEFAULT NULL,
+    comment              TEXT        DEFAULT NULL,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
 );
 
 -- 1c. student_progress — records every exercise completion
@@ -41,6 +43,16 @@ CREATE TABLE IF NOT EXISTS public.student_progress (
     completed_at  TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
 );
 
+-- 1d. peer_messages — student-to-student conversations (text and voice messages)
+CREATE TABLE IF NOT EXISTS public.peer_messages (
+    id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    sender_id    UUID        NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    receiver_id  UUID        NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    message_type TEXT        NOT NULL CHECK (message_type IN ('text', 'voice')) DEFAULT 'text',
+    content      TEXT        NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
 -- ─────────────────────────────────────────────────────────────────────
 -- SECTION 2: ENABLE ROW LEVEL SECURITY
 -- ─────────────────────────────────────────────────────────────────────
@@ -48,6 +60,7 @@ CREATE TABLE IF NOT EXISTS public.student_progress (
 ALTER TABLE public.profiles        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.assignments     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.student_progress ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.peer_messages    ENABLE ROW LEVEL SECURITY;
 
 -- ─────────────────────────────────────────────────────────────────────
 -- SECTION 3: RLS POLICIES
@@ -78,9 +91,19 @@ DROP POLICY IF EXISTS "Teachers can insert assignments"          ON public.assig
 DROP POLICY IF EXISTS "Teachers can update own assignments"      ON public.assignments;
 DROP POLICY IF EXISTS "Teachers can delete own assignments"      ON public.assignments;
 
--- All authenticated users can browse assignments (students do homework)
+-- All authenticated users can browse assignments (if they are assigned or if they are the teacher)
 CREATE POLICY "Authenticated users can read assignments" ON public.assignments
-    FOR SELECT USING (auth.role() = 'authenticated');
+    FOR SELECT USING (
+        auth.role() = 'authenticated'
+        AND (
+            assigned_student_ids IS NULL 
+            OR auth.uid() = ANY(assigned_student_ids)
+            OR EXISTS (
+                SELECT 1 FROM public.profiles
+                WHERE id = auth.uid() AND role = 'teacher'
+            )
+        )
+    );
 
 -- Only teachers can publish new assignments
 CREATE POLICY "Teachers can insert assignments" ON public.assignments
@@ -139,6 +162,15 @@ CREATE POLICY "Teachers can read all progress" ON public.student_progress
             WHERE id = auth.uid() AND role = 'teacher'
         )
     );
+
+-- ── peer_messages ──────────────────────────────────────────────────────
+DROP POLICY IF EXISTS "Users can insert own peer messages" ON public.peer_messages;
+CREATE POLICY "Users can insert own peer messages" ON public.peer_messages
+    FOR INSERT WITH CHECK (auth.uid() = sender_id);
+
+DROP POLICY IF EXISTS "Users can read own peer conversations" ON public.peer_messages;
+CREATE POLICY "Users can read own peer conversations" ON public.peer_messages
+    FOR SELECT USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
 
 -- ─────────────────────────────────────────────────────────────────────
 -- SECTION 4: TRIGGER — Auto-create profile on Auth sign-up
