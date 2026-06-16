@@ -1253,8 +1253,8 @@ export default function StudentDashboard() {
               <div className="max-w-xl mx-auto space-y-5">
                 <div className="bg-white rounded-3xl border border-purple-100 shadow-md p-6 md:p-8">
                   <div className="text-center pb-5 border-b border-purple-50 mb-6">
-                    <h3 className="text-xl font-black text-brand-dark flex items-center justify-center gap-2">Pronunciation Coach <span className="text-xs font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full">✨ AI Tips</span></h3>
-                    <p className="text-xs text-brand-dark/50 mt-1">Speak the word — Gemini AI gives phonetic coaching.</p>
+                    <h3 className="text-xl font-black text-brand-dark flex items-center justify-center gap-2">Pronunciation Coach <span className="text-xs font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full">✨ AI Phonetics</span></h3>
+                    <p className="text-xs text-brand-dark/50 mt-1">Speak the word — AI Coach gives phonetic coaching.</p>
                   </div>
                   <div className="space-y-8 text-center">
                     <div className={`p-8 rounded-3xl border transition-all ${pronunciationResult === "correct" ? "bg-brand-success/10 border-brand-success/30" : pronunciationResult === "incorrect" ? "bg-red-50 border-red-200" : "bg-brand-bg/50 border-purple-100/50"}`}>
@@ -1268,15 +1268,15 @@ export default function StudentDashboard() {
                       )}
                     </div>
                     <div className="flex justify-center items-center gap-6">
-                      <button onClick={playTargetWord} title="Hear it" className="w-16 h-16 rounded-full bg-brand-bg text-brand-primary border border-brand-light/35 flex items-center justify-center text-xl shadow-md hover:scale-105 transition-transform">🔊</button>
-                      <button onClick={startPronunListening} disabled={isListeningPronun}
+                      <button onClick={playTargetWord} type="button" title="Hear it" className="w-16 h-16 rounded-full bg-brand-bg text-brand-primary border border-brand-light/35 flex items-center justify-center text-xl shadow-md hover:scale-105 transition-transform">🔊</button>
+                      <button onClick={togglePronunListening} type="button"
                         className={`w-20 h-20 rounded-full flex items-center justify-center text-3xl shadow-xl transition-all relative ${isListeningPronun ? "bg-red-500 text-white animate-pulse shadow-red-500/20" : "bg-brand-primary hover:bg-brand-light text-white shadow-brand-primary/25 hover:scale-105"}`}>
-                        {isListeningPronun ? <span className="flex items-center justify-center"><span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-ping" />🎙️</span> : "🎙️"}
+                        {isListeningPronun ? <span className="flex items-center justify-center"><span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-ping" />⏹️</span> : "🎙️"}
                       </button>
-                      <button onClick={() => { setPronunWordIndex((pronunWordIndex + 1) % pronunciationWords.length); setSpokenText(""); setPronunciationResult(null); setPronunAiTip(null); }} title="Next word" className="w-16 h-16 rounded-full bg-brand-bg text-brand-primary border border-brand-light/35 flex items-center justify-center text-lg shadow-md hover:scale-105 transition-transform">➡️</button>
+                      <button onClick={() => { setPronunWordIndex((pronunWordIndex + 1) % pronunciationWords.length); setSpokenText(""); setPronunciationResult(null); setPronunAiTip(null); }} type="button" title="Next word" className="w-16 h-16 rounded-full bg-brand-bg text-brand-primary border border-brand-light/35 flex items-center justify-center text-lg shadow-md hover:scale-105 transition-transform">➡️</button>
                     </div>
                     <div className="h-6">
-                      {isListeningPronun && <p className="text-xs font-bold text-red-500 animate-pulse">🎤 Listening… Speak now!</p>}
+                      {isListeningPronun && <p className="text-xs font-bold text-red-500 animate-pulse">🎤 Listening… Click button again to stop!</p>}
                       {pronunciationResult === "correct"   && <p className="text-xs font-bold text-brand-success">✨ Perfect pronunciation!</p>}
                       {pronunciationResult === "incorrect" && <p className="text-xs font-bold text-red-500">❌ Not quite — see AI tip below.</p>}
                     </div>
@@ -1289,7 +1289,7 @@ export default function StudentDashboard() {
                     {fetchingPronunTip ? (
                       <div className="flex items-center gap-3 text-violet-600">
                         <div className="w-5 h-5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
-                        <span className="text-xs font-bold">Gemini is building your phonetic tip…</span>
+                        <span className="text-xs font-bold">AI Coach is building your phonetic tip…</span>
                       </div>
                     ) : pronunAiTip && (
                       <div className="space-y-4">
@@ -1308,13 +1308,13 @@ export default function StudentDashboard() {
                           </div>
                         </div>
                         <div className="bg-violet-50 p-4 rounded-xl border border-violet-100">
-                          <p className="text-[10px] font-bold text-violet-500 uppercase mb-1">Coach Vibe Says</p>
-                          <p className="text-xs text-violet-800 font-medium leading-relaxed">{pronunAiTip.tip}</p>
+                          <p className="text-[10px] font-bold text-violet-500 uppercase mb-1">AI Coach Says</p>
+                          <p className="text-xs text-violet-800 font-medium leading-relaxed font-semibold">{pronunAiTip.tip}</p>
                         </div>
                         {pronunAiTip.mouthPosition && (
                           <div className="bg-amber-50 p-3 rounded-xl border border-amber-100">
                             <p className="text-[10px] font-bold text-amber-600 uppercase mb-1">Mouth Position</p>
-                            <p className="text-xs text-amber-800 font-medium">{pronunAiTip.mouthPosition}</p>
+                            <p className="text-xs text-amber-800 font-medium font-semibold">{pronunAiTip.mouthPosition}</p>
                           </div>
                         )}
                         {pronunAiTip.practicePhrase && (
@@ -1339,7 +1339,7 @@ export default function StudentDashboard() {
                       <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-primary to-brand-light text-white flex items-center justify-center text-lg font-bold shadow-md">✨</div>
                       <div>
                         <h3 className="font-bold text-brand-dark text-sm">Coach Vibe</h3>
-                        <p className="text-[10px] text-brand-success font-bold flex items-center gap-1 mt-0.5"><span className="w-1.5 h-1.5 rounded-full bg-brand-success" /> Gemini AI · Real Conversation</p>
+                        <p className="text-[10px] text-brand-success font-bold flex items-center gap-1 mt-0.5"><span className="w-1.5 h-1.5 rounded-full bg-brand-success" /> AI Bot · Real Conversation</p>
                       </div>
                     </div>
                     <span className="text-[10px] text-brand-dark/40 font-bold uppercase tracking-wider bg-white px-2.5 py-1 rounded-full border border-purple-50">🎙️ Speech + AI</span>
@@ -1369,7 +1369,9 @@ export default function StudentDashboard() {
                   </div>
 
                   <form onSubmit={handleSendMessage} className="p-4 border-t border-purple-100 flex items-center gap-3 bg-white shrink-0">
-                    <button type="button" onClick={startChatDictation} className={`w-12 h-12 rounded-xl flex items-center justify-center text-lg transition-all shrink-0 border ${isListeningChat ? "bg-red-500 text-white animate-pulse border-red-500" : "bg-brand-bg text-brand-primary border-purple-100 hover:border-brand-primary/40"}`} title="Speak">🎙️</button>
+                    <button type="button" onClick={toggleChatDictation} className={`w-12 h-12 rounded-xl flex items-center justify-center text-lg transition-all shrink-0 border ${isListeningChat ? "bg-red-500 text-white animate-pulse border-red-500 shadow-md" : "bg-brand-bg text-brand-primary border-purple-100 hover:border-brand-primary/40"}`} title={isListeningChat ? "Stop Dictation" : "Start Dictation"}>
+                      {isListeningChat ? "⏹️" : "🎙️"}
+                    </button>
                     <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} placeholder={isListeningChat ? "Listening…" : "Type or speak your message…"} disabled={isListeningChat}
                       className="flex-1 px-4 py-3 rounded-xl border border-purple-100 bg-brand-soft/50 focus:outline-none focus:border-brand-primary focus:bg-white transition-all text-brand-dark text-sm placeholder-brand-dark/30 font-medium" />
                     <button type="submit" disabled={!chatInput.trim() || isListeningChat}
@@ -1395,24 +1397,206 @@ export default function StudentDashboard() {
                 )}
               </div>
             )}
+
+            {/* ═══ BLOCK 5: PEER SPEAKING CLUB ═══ */}
+            {activeBlock === "peer_chat" && (
+              <div className="max-w-4xl mx-auto space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  
+                  {/* Left Column: Student Search & List */}
+                  <div className="bg-white rounded-3xl border border-purple-100 shadow-md p-5 h-[580px] flex flex-col">
+                    <h3 className="font-black text-brand-dark text-lg mb-4">Find Study Partners</h3>
+                    
+                    {/* Search Input */}
+                    <div className="relative mb-4 shrink-0">
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => handleSearchPeers(e.target.value)}
+                        placeholder="Search by name or email…"
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-purple-100 bg-brand-soft/50 focus:outline-none focus:border-brand-primary focus:bg-white transition-all text-brand-dark text-sm placeholder-brand-dark/30 font-medium"
+                      />
+                      <span className="absolute left-3.5 top-3.5 text-xs text-brand-dark/40">🔍</span>
+                    </div>
+
+                    {/* Results / Default list */}
+                    <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
+                      {searchResults.map((peer) => {
+                        const isSelected = selectedPeer?.id === peer.id;
+                        return (
+                          <button
+                            key={peer.id}
+                            onClick={() => {
+                              setSelectedPeer(peer);
+                              setPeerMessages([]);
+                              fetchPeerMessages(peer.id);
+                            }}
+                            className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-center gap-3 ${
+                              isSelected
+                                ? "bg-brand-primary text-white border-brand-primary shadow-md"
+                                : "bg-brand-soft/30 hover:bg-brand-bg/50 border-purple-50/50 text-brand-dark"
+                            }`}
+                          >
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
+                              isSelected ? "bg-white/20 text-white" : "bg-brand-primary/10 text-brand-primary"
+                            }`}>
+                              {peer.full_name ? peer.full_name.split(" ").map(n=>n[0]).join("") : "S"}
+                            </div>
+                            <div className="overflow-hidden">
+                              <h4 className="font-bold text-xs truncate">{peer.full_name}</h4>
+                              <p className={`text-[10px] font-bold ${isSelected ? "text-white/70" : "text-brand-dark/40"} mt-0.5`}>Level: {peer.current_level || "Not Tested"}</p>
+                            </div>
+                          </button>
+                        );
+                      })}
+                      {searchResults.length === 0 && (
+                        <p className="text-xs text-brand-dark/45 text-center mt-8 italic font-semibold">No students found.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right Column: Chat Console */}
+                  <div className="md:col-span-2 bg-white rounded-3xl border border-purple-100 shadow-md flex flex-col h-[580px] overflow-hidden">
+                    {selectedPeer ? (
+                      <>
+                        {/* Chat Header */}
+                        <div className="px-6 py-4 bg-brand-bg border-b border-purple-100 flex items-center justify-between shrink-0">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-primary to-brand-light text-white flex items-center justify-center text-sm font-bold shadow-md">
+                              {selectedPeer.full_name ? selectedPeer.full_name.split(" ").map(n=>n[0]).join("") : "S"}
+                            </div>
+                            <div>
+                              <h3 className="font-bold text-brand-dark text-sm">{selectedPeer.full_name}</h3>
+                              <p className="text-[10px] text-brand-success font-bold flex items-center gap-1 mt-0.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-brand-success animate-pulse" /> Live Session Active
+                              </p>
+                            </div>
+                          </div>
+                          <span className="text-[10px] text-brand-dark/40 font-bold uppercase tracking-wider bg-white px-2.5 py-1 rounded-full border border-purple-50">Speaking Club</span>
+                        </div>
+
+                        {/* Messages Area */}
+                        <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-brand-soft/20 flex flex-col">
+                          {peerMessages.map((msg) => {
+                            const isMe = msg.sender_id === studentId;
+                            return (
+                              <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+                                <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm font-semibold shadow-sm leading-relaxed ${
+                                  isMe
+                                    ? "bg-brand-primary text-white rounded-tr-none"
+                                    : "bg-white text-brand-dark border border-purple-50 rounded-tl-none"
+                                }`}>
+                                  {msg.message_type === "voice" ? (
+                                    <div className="space-y-1.5 py-0.5">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-base shrink-0">🎙️ Voice Message</span>
+                                      </div>
+                                      <audio src={msg.content} controls className="max-w-[200px] h-9 focus:outline-none" />
+                                    </div>
+                                  ) : (
+                                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                                  )}
+                                  <span className={`text-[8px] font-bold block text-right mt-1.5 ${isMe ? "text-white/60" : "text-brand-dark/40"}`}>
+                                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {peerMessages.length === 0 && (
+                            <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-brand-dark/40 space-y-2">
+                              <span className="text-4xl">👋</span>
+                              <h4 className="font-bold text-sm">Say hello to {selectedPeer.full_name}!</h4>
+                              <p className="text-xs max-w-xs leading-normal font-semibold">Start the conversation by typing a text message or recording a voice note below.</p>
+                            </div>
+                          )}
+                          <div ref={peerChatBottomRef} />
+                        </div>
+
+                        {/* Input Footer */}
+                        <form onSubmit={handleSendPeerTextMessage} className="p-4 border-t border-purple-100 flex items-center gap-3 bg-white shrink-0">
+                          {/* Audio Record Button */}
+                          <button
+                            type="button"
+                            onClick={toggleRecordingPeerVoice}
+                            className={`w-12 h-12 rounded-xl flex items-center justify-center text-lg transition-all shrink-0 border relative ${
+                              isRecordingPeerVoice
+                                ? "bg-red-500 text-white animate-pulse border-red-500 shadow-md"
+                                : "bg-brand-bg text-brand-primary border-purple-100 hover:border-brand-primary/40"
+                            }`}
+                            title={isRecordingPeerVoice ? "Stop & Send Voice Note" : "Record Voice Note"}
+                          >
+                            {isRecordingPeerVoice ? (
+                              <span className="flex items-center justify-center">
+                                <span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-ping" />
+                                ⏹️
+                              </span>
+                            ) : "🎙️"}
+                          </button>
+                          
+                          {/* Text Input */}
+                          <input
+                            type="text"
+                            value={peerChatInput}
+                            onChange={(e) => setPeerChatInput(e.target.value)}
+                            placeholder={isRecordingPeerVoice ? "Recording voice message… Click ⏹️ to send!" : "Type your message here…"}
+                            disabled={isRecordingPeerVoice}
+                            className="flex-1 px-4 py-3 rounded-xl border border-purple-100 bg-brand-soft/50 focus:outline-none focus:border-brand-primary focus:bg-white transition-all text-brand-dark text-sm placeholder-brand-dark/30 font-medium"
+                          />
+                          
+                          {/* Send Button */}
+                          <button
+                            type="submit"
+                            disabled={!peerChatInput.trim() || isRecordingPeerVoice}
+                            className={`w-12 h-12 rounded-xl flex items-center justify-center text-white transition-all shrink-0 shadow-md ${
+                              peerChatInput.trim() && !isRecordingPeerVoice
+                                ? "bg-brand-primary hover:bg-brand-light shadow-brand-primary/15"
+                                : "bg-purple-200 cursor-not-allowed"
+                            }`}
+                          >
+                            <svg className="w-5 h-5 transform rotate-90" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M2 21l21-9L2 3v7l15 2-15 2v7z" />
+                            </svg>
+                          </button>
+                        </form>
+                      </>
+                    ) : (
+                      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-brand-dark/45 space-y-4">
+                        <div className="w-20 h-20 rounded-3xl bg-brand-bg flex items-center justify-center text-3xl shadow-inner animate-bounce">🤝</div>
+                        <div>
+                          <h4 className="font-black text-lg text-brand-dark">Peer Speaking Club</h4>
+                          <p className="text-xs max-w-sm mx-auto leading-relaxed mt-1.5 font-semibold text-brand-dark/60">
+                            Select a study partner from the left menu to start typing messages or exchange voice practice recordings!
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              </div>
+            )}
           </div>
         ) : (
-          /* ── 4-Block Grid ── */
-          <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          /* ── 5-Block Grid ── */
+          <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {[
-              { key:"test",         emoji:"🧠", label:"English Level Test",    badge:"AI Assessed",   color:"bg-purple-50 text-brand-primary",  cta:"Start AI Diagnostics",   desc:"Answer 20 progressive grammar questions. Gemini AI analyses your answers and gives CEFR level, grammar breakdown, and a personalised 30-day study plan." },
-              { key:"assignments",  emoji:"🧩", label:"Assignments Hub",       badge:"AI Feedback",   color:"bg-indigo-50 text-indigo-500",     cta:"Launch Assignments",     desc:"Complete matching, sentence ordering, and translation exercises. Gemini AI gives instant feedback and learning tips after each activity." },
+              { key:"test",         emoji:"🧠", label:"English Level Test",    badge:"AI Assessed",   color:"bg-purple-50 text-brand-primary",  cta:"Start AI Diagnostics",   desc:"Answer 20 progressive grammar questions. AI Bot analyses your grammar profile and gives CEFR level, grammar breakdown, and a study plan." },
+              { key:"assignments",  emoji:"🧩", label:"Assignments Hub",       badge:"AI Feedback",   color:"bg-indigo-50 text-indigo-500",     cta:"Launch Assignments",     desc:"Complete matching, sentence ordering, translation, or speech exercises. AI Coach gives instant feedback and learning tips after each activity." },
               { key:"pronunciation",emoji:"🎙️", label:"Pronunciation Coach",  badge:"AI Phonetics",  color:"bg-emerald-50 text-brand-success", cta:"Open Audio Coach",       desc:"Speak target vocabulary and get AI phonetic guidance: IPA transcription, syllable breakdown, and mouth-position coaching from Coach Vibe." },
-              { key:"chat",         emoji:"💬", label:"AI Speaking Club",      badge:"Real Gemini AI",color:"bg-violet-50 text-violet-500",     cta:"Talk to Coach Vibe",     desc:"Have real conversations with Gemini AI acting as your personal English coach. Speak or type — get responses, corrections, and encouragement." },
+              { key:"chat",         emoji:"💬", label:"AI Speaking Club",      badge:"Real AI Bot",   color:"bg-violet-50 text-violet-500",     cta:"Talk to Coach Vibe",     desc:"Have real conversations with AI Bot acting as your personal English coach. Speak or type — get responses, corrections, and encouragement." },
+              { key:"peer_chat",    emoji:"🤝", label:"Peer Speaking Club",    badge:"Student Chat",  color:"bg-amber-50 text-amber-500",       cta:"Join Speaking Club",     desc:"Find other students, practice speaking, and chat. Send text and voice messages to improve your communication together." }
             ].map(block => (
               <div key={block.key} onClick={() => setActiveBlock(block.key)}
-                className="p-8 rounded-3xl bg-white border border-purple-100 hover:border-brand-primary/30 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer group">
-                <div className="flex justify-between items-start mb-6">
-                  <div className={`w-14 h-14 rounded-2xl ${block.color} flex items-center justify-center text-2xl group-hover:scale-110 transition-transform shadow-inner`}>{block.emoji}</div>
-                  <span className="text-xs font-bold text-violet-600 bg-violet-50 px-3 py-1 rounded-full border border-violet-100">✨ {block.badge}</span>
+                className="p-8 rounded-3xl bg-white border border-purple-100 hover:border-brand-primary/30 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer group flex flex-col justify-between">
+                <div>
+                  <div className="flex justify-between items-start mb-6">
+                    <div className={`w-14 h-14 rounded-2xl ${block.color} flex items-center justify-center text-2xl group-hover:scale-110 transition-transform shadow-inner`}>{block.emoji}</div>
+                    <span className="text-xs font-bold text-violet-600 bg-violet-50 px-3 py-1 rounded-full border border-violet-100">✨ {block.badge}</span>
+                  </div>
+                  <h3 className="text-xl font-bold text-brand-dark mb-2.5">{block.label}</h3>
+                  <p className="text-brand-dark/65 text-sm leading-relaxed mb-6 font-semibold">{block.desc}</p>
                 </div>
-                <h3 className="text-xl font-bold text-brand-dark mb-2.5">{block.label}</h3>
-                <p className="text-brand-dark/65 text-sm leading-relaxed mb-6 font-medium">{block.desc}</p>
                 <div className="flex items-center gap-2 text-xs font-bold text-brand-primary group-hover:gap-3.5 transition-all"><span>{block.cta}</span><span>→</span></div>
               </div>
             ))}
