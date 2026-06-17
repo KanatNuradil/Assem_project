@@ -286,21 +286,25 @@ export default function StudentDashboard() {
   const peerChatBottomRef = useRef(null);
 
   useEffect(() => {
-    if (activeBlock !== "assignments") return;
     const fetchAssignments = async () => {
+      if (!studentId) return;
       try {
         let query = supabase.from("assignments").select("id,title,type,content,comment,created_at").order("created_at", { ascending: false });
-        if (studentId) {
-          query = query.or(`assigned_student_ids.is.null,assigned_student_ids.cs.{${studentId}}`);
-        }
-        const { data, error } = await query.limit(10);
+        query = query.or(`assigned_student_ids.is.null,assigned_student_ids.cs.{${studentId}}`);
+        const { data, error } = await query.limit(15);
         if (error) throw error;
-        if (data && data.length > 0) { setAssignments(data); loadAssignmentData(data[0]); }
-      } catch (err) { console.warn("Assignments fetch failed – demo data.", err.message); setAssignments([]); }
+        setAssignments(data || []);
+      } catch (err) { console.warn("Assignments fetch failed.", err.message); }
     };
     fetchAssignments();
+  }, [studentId]);
+
+  useEffect(() => {
+    if (activeBlock === "assignments" && assignments.length > 0 && !activeAssignment) {
+      loadAssignmentData(assignments[0]);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeBlock, studentId]);
+  }, [activeBlock, assignments]);
 
   const loadAssignmentData = (a) => {
     setActiveAssignment(a); resetMatchingWidget(); resetSentenceBuilder(); resetTranslation(); resetCustomSpeechPractice(); setAiFeedback(null);
@@ -399,7 +403,25 @@ export default function StudentDashboard() {
   const [isListeningPronun, setIsListeningPronun]   = useState(false);
   const [pronunAiTip, setPronunAiTip]               = useState(null);
   const [fetchingPronunTip, setFetchingPronunTip]   = useState(false);
-  const targetWord = pronunciationWords[pronunWordIndex];
+  const [pronunWordsList, setPronunWordsList]       = useState(pronunciationWords);
+  const [pronunSetMode, setPronunSetMode]           = useState("default");
+  const targetWord = pronunWordsList[pronunWordIndex];
+
+  const handleSetPronunMode = (modeVal) => {
+    setPronunSetMode(modeVal);
+    setPronunWordIndex(0);
+    setSpokenText("");
+    setPronunciationResult(null);
+    setPronunAiTip(null);
+    if (modeVal === "default") {
+      setPronunWordsList(pronunciationWords);
+    } else {
+      const selectedAsg = assignments.find(a => a.id === modeVal);
+      if (selectedAsg && selectedAsg.content?.words) {
+        setPronunWordsList(selectedAsg.content.words);
+      }
+    }
+  };
 
   const playTargetWord = () => {
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
@@ -443,19 +465,14 @@ export default function StudentDashboard() {
     recognition.lang = "en-US";
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
-    recognition.continuous = true;
+    recognition.continuous = false;
 
     recognition.onstart = () => setIsListeningPronun(true);
     recognition.onend = () => setIsListeningPronun(false);
     recognition.onerror = (e) => { console.error(e); setIsListeningPronun(false); };
     
     recognition.onresult = (event) => {
-      let resultText = "";
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          resultText += event.results[i][0].transcript;
-        }
-      }
+      const resultText = event.results[0]?.[0]?.transcript || "";
       if (resultText) {
         setSpokenText(resultText);
         const cleanTarget = targetWord.toLowerCase().replace(/[^\w\s]/g, "").trim();
@@ -463,6 +480,13 @@ export default function StudentDashboard() {
         const correct = cleanTarget === cleanSpoken;
         setPronunciationResult(correct ? "correct" : "incorrect");
         fetchPronunTip(resultText, correct);
+
+        if (correct && pronunSetMode !== "default") {
+          if (pronunWordIndex === pronunWordsList.length - 1) {
+            saveAssignmentProgress(pronunSetMode, pronunWordsList.length, pronunWordsList.length);
+            fetchAiFeedback("speech_practice", pronunWordsList.length, pronunWordsList.length);
+          }
+        }
       }
     };
 
@@ -514,19 +538,14 @@ export default function StudentDashboard() {
     recognition.lang = "en-US";
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
-    recognition.continuous = true;
+    recognition.continuous = false;
 
     recognition.onstart = () => setIsListeningCustomSpeech(true);
     recognition.onend = () => setIsListeningCustomSpeech(false);
     recognition.onerror = (e) => { console.error(e); setIsListeningCustomSpeech(false); };
     
     recognition.onresult = (event) => {
-      let resultText = "";
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          resultText += event.results[i][0].transcript;
-        }
-      }
+      const resultText = event.results[0]?.[0]?.transcript || "";
       if (resultText) {
         setCustomSpokenText(resultText);
         const target = customSpeechWords[customSpeechIndex];
@@ -566,6 +585,9 @@ export default function StudentDashboard() {
   const [isListeningChat, setIsListeningChat] = useState(false);
   const [isAiTyping, setIsAiTyping]       = useState(false);
   const [corrections, setCorrections]     = useState([]);
+  const [chatUpgrade, setChatUpgrade]     = useState("");
+  const [chatVocabBoost, setChatVocabBoost] = useState("");
+  const [chatScores, setChatScores]       = useState(null);
   const [messages, setMessages]           = useState([
     { id: 1, sender: "ai", text: "Hello! Welcome to the AI Speaking Club. I am Coach Vibe, your personal English language coach. What topic would you like to speak about today?" }
   ]);
@@ -592,19 +614,14 @@ export default function StudentDashboard() {
     const recognition = new SR();
     recognition.lang = "en-US";
     recognition.interimResults = false;
-    recognition.continuous = true;
+    recognition.continuous = false;
 
     recognition.onstart  = () => setIsListeningChat(true);
     recognition.onend    = () => setIsListeningChat(false);
     recognition.onerror  = (e) => { console.error(e); setIsListeningChat(false); };
     
     recognition.onresult = (event) => {
-      let resultText = "";
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          resultText += event.results[i][0].transcript;
-        }
-      }
+      const resultText = event.results[0]?.[0]?.transcript || "";
       if (resultText) {
         setChatInput(prev => prev ? `${prev} ${resultText}` : resultText);
       }
@@ -624,6 +641,9 @@ export default function StudentDashboard() {
     setChatInput("");
     setIsAiTyping(true);
     setCorrections([]);
+    setChatUpgrade("");
+    setChatVocabBoost("");
+    setChatScores(null);
 
     try {
       const res = await fetch("/api/ai/chat", {
@@ -634,6 +654,9 @@ export default function StudentDashboard() {
       if (data.reply) {
         setMessages(prev => [...prev, { id: Date.now() + 1, sender: "ai", text: data.reply }]);
         if (data.corrections?.length > 0) setCorrections(data.corrections);
+        if (data.upgrade) setChatUpgrade(data.upgrade);
+        if (data.vocabBoost) setChatVocabBoost(data.vocabBoost);
+        if (data.scores) setChatScores(data.scores);
       } else {
         setMessages(prev => [...prev, { id: Date.now() + 1, sender: "ai", text: "I'm sorry, I had trouble responding. Please try again!" }]);
       }
@@ -1251,6 +1274,45 @@ export default function StudentDashboard() {
             {/* ═══ BLOCK 3: PRONUNCIATION ═══ */}
             {activeBlock === "pronunciation" && (
               <div className="max-w-xl mx-auto space-y-5">
+                {/* Practice Set Selector */}
+                {assignments.filter(a => a.type === "speech_practice").length > 0 && (
+                  <div className="bg-white rounded-3xl border border-purple-100 shadow-sm p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">📚</span>
+                      <div>
+                        <p className="text-xs font-bold text-brand-dark/50 uppercase tracking-wider">Practice Mode</p>
+                        <p className="text-[11px] font-semibold text-brand-dark">Choose default or teacher assignments</p>
+                      </div>
+                    </div>
+                    <select
+                      value={pronunSetMode}
+                      onChange={(e) => handleSetPronunMode(e.target.value)}
+                      className="bg-brand-bg border border-purple-100 rounded-xl px-3 py-1.5 text-xs text-brand-dark font-bold focus:outline-none focus:ring-1 focus:ring-brand-primary/40 focus:border-brand-primary/40 cursor-pointer shadow-sm transition-all"
+                    >
+                      <option value="default">Default LingoVibe Set</option>
+                      {assignments.filter(a => a.type === "speech_practice").map((a) => (
+                        <option key={a.id} value={a.id}>
+                          Teacher: {a.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Teacher's Note */}
+                {pronunSetMode !== "default" && (() => {
+                  const selectedAsg = assignments.find(a => a.id === pronunSetMode);
+                  return selectedAsg?.comment ? (
+                    <div className="bg-amber-50 border border-amber-100 text-amber-900 rounded-3xl p-4 text-xs flex items-start gap-3.5 shadow-sm">
+                      <span className="text-lg leading-none shrink-0">💬</span>
+                      <div>
+                        <span className="font-bold text-brand-primary block mb-0.5">Teacher's Note:</span>
+                        <p className="leading-relaxed font-semibold">{selectedAsg.comment}</p>
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
+
                 <div className="bg-white rounded-3xl border border-purple-100 shadow-md p-6 md:p-8">
                   <div className="text-center pb-5 border-b border-purple-50 mb-6">
                     <h3 className="text-xl font-black text-brand-dark flex items-center justify-center gap-2">Pronunciation Coach <span className="text-xs font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full">✨ AI Phonetics</span></h3>
@@ -1258,7 +1320,7 @@ export default function StudentDashboard() {
                   </div>
                   <div className="space-y-8 text-center">
                     <div className={`p-8 rounded-3xl border transition-all ${pronunciationResult === "correct" ? "bg-brand-success/10 border-brand-success/30" : pronunciationResult === "incorrect" ? "bg-red-50 border-red-200" : "bg-brand-bg/50 border-purple-100/50"}`}>
-                      <p className="text-xs font-bold text-brand-primary uppercase tracking-widest mb-1.5">Word {pronunWordIndex + 1} of {pronunciationWords.length}</p>
+                      <p className="text-xs font-bold text-brand-primary uppercase tracking-widest mb-1.5">Word {pronunWordIndex + 1} of {pronunWordsList.length}</p>
                       <h4 className="text-4xl font-black text-brand-dark tracking-tight">{targetWord}</h4>
                       {spokenText && (
                         <div className="mt-5 border-t border-purple-50/50 pt-4">
@@ -1273,11 +1335,15 @@ export default function StudentDashboard() {
                         className={`w-20 h-20 rounded-full flex items-center justify-center text-3xl shadow-xl transition-all relative ${isListeningPronun ? "bg-red-500 text-white animate-pulse shadow-red-500/20" : "bg-brand-primary hover:bg-brand-light text-white shadow-brand-primary/25 hover:scale-105"}`}>
                         {isListeningPronun ? <span className="flex items-center justify-center"><span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-ping" />⏹️</span> : "🎙️"}
                       </button>
-                      <button onClick={() => { setPronunWordIndex((pronunWordIndex + 1) % pronunciationWords.length); setSpokenText(""); setPronunciationResult(null); setPronunAiTip(null); }} type="button" title="Next word" className="w-16 h-16 rounded-full bg-brand-bg text-brand-primary border border-brand-light/35 flex items-center justify-center text-lg shadow-md hover:scale-105 transition-transform">➡️</button>
+                      <button onClick={() => { setPronunWordIndex((pronunWordIndex + 1) % pronunWordsList.length); setSpokenText(""); setPronunciationResult(null); setPronunAiTip(null); }} type="button" title="Next word" className="w-16 h-16 rounded-full bg-brand-bg text-brand-primary border border-brand-light/35 flex items-center justify-center text-lg shadow-md hover:scale-105 transition-transform">➡️</button>
                     </div>
                     <div className="h-6">
                       {isListeningPronun && <p className="text-xs font-bold text-red-500 animate-pulse">🎤 Listening… Click button again to stop!</p>}
-                      {pronunciationResult === "correct"   && <p className="text-xs font-bold text-brand-success">✨ Perfect pronunciation!</p>}
+                      {pronunciationResult === "correct"   && (
+                        <p className="text-xs font-bold text-brand-success">
+                          {pronunWordIndex === pronunWordsList.length - 1 ? "🎉 All words completed!" : "✨ Perfect pronunciation! Click ➡️ to proceed."}
+                        </p>
+                      )}
                       {pronunciationResult === "incorrect" && <p className="text-xs font-bold text-red-500">❌ Not quite — see AI tip below.</p>}
                     </div>
                   </div>
@@ -1323,6 +1389,28 @@ export default function StudentDashboard() {
                             <p className="text-xs text-brand-dark font-medium italic">{`"${pronunAiTip.practicePhrase}"`}</p>
                           </div>
                         )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* AI Assignment Feedback Panel (for completed teacher assignments) */}
+                {pronunSetMode !== "default" && (fetchingFeedback || aiFeedback) && (
+                  <div className="bg-violet-50/60 p-5 rounded-3xl border border-violet-100 max-w-xl mx-auto shadow-sm">
+                    {fetchingFeedback ? (
+                      <div className="flex items-center gap-3 text-violet-600">
+                        <div className="w-5 h-5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
+                        <span className="text-xs font-bold">AI Coach is reviewing your work…</span>
+                      </div>
+                    ) : aiFeedback && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">{aiFeedback.emoji}</span>
+                          <span className="font-bold text-violet-800 text-sm">{aiFeedback.headline}</span>
+                        </div>
+                        <p className="text-xs text-violet-700/80 leading-relaxed font-semibold">{aiFeedback.feedback}</p>
+                        {aiFeedback.tips?.map((tip, i) => <p key={i} className="text-xs text-violet-600 font-medium">💡 {tip}</p>)}
+                        {aiFeedback.nextStep && <p className="text-xs text-violet-500 italic mt-1 font-semibold">Next: {aiFeedback.nextStep}</p>}
                       </div>
                     )}
                   </div>
@@ -1381,18 +1469,64 @@ export default function StudentDashboard() {
                   </form>
                 </div>
 
-                {/* Grammar Corrections panel */}
-                {corrections.length > 0 && (
-                  <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 space-y-2">
-                    <p className="text-xs font-bold text-amber-700 flex items-center gap-2">📝 Grammar Corrections from Coach Vibe</p>
-                    {corrections.map((c, i) => (
-                      <div key={i} className="bg-white rounded-xl p-3 border border-amber-100 text-xs">
-                        <span className="text-red-500 line-through font-medium">{c.wrong}</span>
-                        <span className="mx-2 text-amber-400">→</span>
-                        <span className="text-emerald-600 font-bold">{c.correct}</span>
-                        {c.explanation && <p className="text-amber-700/70 mt-1">{c.explanation}</p>}
+                {/* AI Speaking Coach Feedback Panel */}
+                {(corrections.length > 0 || chatUpgrade || chatVocabBoost || chatScores) && (
+                  <div className="bg-white rounded-3xl border border-violet-100 shadow-md p-6 space-y-4">
+                    <div className="flex items-center gap-2 border-b border-violet-50 pb-3">
+                      <span className="text-xl">💡</span>
+                      <h5 className="font-bold text-brand-dark text-sm">AI Speaking Coach Feedback</h5>
+                    </div>
+
+                    {/* Performance Ratings (Fluency, Vocabulary, Grammar) */}
+                    {chatScores && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 border-b border-violet-50 pb-2">
+                        <div className="bg-blue-50/60 p-3 rounded-xl border border-blue-100/50">
+                          <p className="text-[10px] font-black text-blue-600 uppercase mb-1">🗣️ Fluency</p>
+                          <p className="text-xs text-blue-900 font-bold leading-tight">{chatScores.fluency}</p>
+                        </div>
+                        <div className="bg-emerald-50/60 p-3 rounded-xl border border-emerald-100/50">
+                          <p className="text-[10px] font-black text-emerald-600 uppercase mb-1">📚 Vocabulary</p>
+                          <p className="text-xs text-emerald-900 font-bold leading-tight">{chatScores.vocabulary}</p>
+                        </div>
+                        <div className="bg-purple-50/60 p-3 rounded-xl border border-purple-100/50">
+                          <p className="text-[10px] font-black text-purple-600 uppercase mb-1">✍️ Grammar</p>
+                          <p className="text-xs text-purple-900 font-bold leading-tight">{chatScores.grammar}</p>
+                        </div>
                       </div>
-                    ))}
+                    )}
+
+                    {/* Grammar & Spelling Corrections */}
+                    {corrections.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Grammar & Spelling Corrections</p>
+                        <div className="grid gap-2">
+                          {corrections.map((c, i) => (
+                            <div key={i} className="bg-amber-50/50 rounded-xl p-3 border border-amber-100 text-xs">
+                              <span className="text-red-500 line-through font-medium">{c.wrong}</span>
+                              <span className="mx-2 text-amber-500 font-bold">→</span>
+                              <span className="text-emerald-600 font-bold">{c.correct}</span>
+                              {c.explanation && <p className="text-amber-805/80 mt-1 font-semibold">{c.explanation}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Upgrade Recast */}
+                    {chatUpgrade && (
+                      <div className="space-y-1 bg-violet-50 p-4 rounded-xl border border-violet-100">
+                        <p className="text-[10px] font-bold text-violet-500 uppercase">Native Rephrasing (Upgrade)</p>
+                        <p className="text-xs text-violet-850 font-bold leading-relaxed">{chatUpgrade}</p>
+                      </div>
+                    )}
+
+                    {/* Vocabulary Boost */}
+                    {chatVocabBoost && (
+                      <div className="space-y-1 bg-emerald-50/60 p-4 rounded-xl border border-emerald-100">
+                        <p className="text-[10px] font-bold text-emerald-600 uppercase">Vocabulary Boost</p>
+                        <p className="text-xs text-emerald-850 font-semibold leading-relaxed">{chatVocabBoost}</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
