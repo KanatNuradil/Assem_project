@@ -71,34 +71,67 @@ Provide your pedagogical feedback in JSON format at the very end of your respons
 
     const fullText = response.text;
 
-    // Parse out corrections if present
+    // Robustly parse out the COACHING JSON block
     let replyText = fullText;
     let corrections = [];
     let upgrade = "";
     let vocabBoost = "";
     let scores = null;
 
-    const coachingMatch = fullText.match(/\[COACHING:\s*(\{.*?\})\]/s);
-    if (coachingMatch) {
-      try {
-        const parsed = JSON.parse(coachingMatch[1]);
-        corrections = parsed.corrections || [];
-        upgrade = parsed.upgrade || "";
-        vocabBoost = parsed.vocabBoost || "";
-        scores = parsed.scores || null;
-        replyText = fullText.replace(/\[COACHING:.*?\]/s, "").trim();
-      } catch {
-        // ignore parse errors
-      }
+    let jsonStartIndex = fullText.toLowerCase().lastIndexOf("coaching");
+    if (jsonStartIndex === -1) {
+      jsonStartIndex = fullText.indexOf("{");
     } else {
-      const correctionMatch = fullText.match(/\[CORRECTIONS:\s*(\{.*?\})\]/s);
-      if (correctionMatch) {
+      jsonStartIndex = fullText.indexOf("{", jsonStartIndex);
+    }
+
+    if (jsonStartIndex !== -1) {
+      const jsonEndIndex = fullText.lastIndexOf("}");
+      if (jsonEndIndex !== -1 && jsonEndIndex > jsonStartIndex) {
+        let jsonStr = fullText.slice(jsonStartIndex, jsonEndIndex + 1).trim();
+        
+        // Strip markdown code block wraps if present
+        if (jsonStr.startsWith("```json")) {
+          jsonStr = jsonStr.slice(7).trim();
+        } else if (jsonStr.startsWith("```")) {
+          jsonStr = jsonStr.slice(3).trim();
+        }
+        if (jsonStr.endsWith("```")) {
+          jsonStr = jsonStr.slice(0, -3).trim();
+        }
+
         try {
-          const parsed = JSON.parse(correctionMatch[1]);
-          corrections = parsed.errors || [];
-          replyText = fullText.replace(/\[CORRECTIONS:.*?\]/s, "").trim();
-        } catch {
-          // ignore
+          const parsed = JSON.parse(jsonStr);
+          corrections = parsed.corrections || [];
+          upgrade = parsed.upgrade || "";
+          vocabBoost = parsed.vocabBoost || "";
+          scores = parsed.scores || null;
+
+          // Strip the coaching block from the main reply
+          let truncateIndex = fullText.toLowerCase().lastIndexOf("[coaching");
+          if (truncateIndex === -1) {
+            truncateIndex = fullText.toLowerCase().lastIndexOf("coaching");
+          }
+          if (truncateIndex === -1) {
+            truncateIndex = jsonStartIndex;
+          }
+          replyText = fullText.slice(0, truncateIndex).trim();
+        } catch (e) {
+          console.error("JSON parse failed for string:", jsonStr, e);
+          // Regex fallback
+          const coachingMatch = fullText.match(/\[COACHING:\s*(\{.*\})\]/is);
+          if (coachingMatch) {
+            try {
+              const parsed = JSON.parse(coachingMatch[1]);
+              corrections = parsed.corrections || [];
+              upgrade = parsed.upgrade || "";
+              vocabBoost = parsed.vocabBoost || "";
+              scores = parsed.scores || null;
+              replyText = fullText.replace(/\[COACHING:.*?\]/is, "").trim();
+            } catch (err) {
+              console.error("Regex fallback parsing failed:", err);
+            }
+          }
         }
       }
     }

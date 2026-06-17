@@ -270,6 +270,7 @@ export default function StudentDashboard() {
   const [fetchingCustomSpeechTip, setFetchingCustomSpeechTip] = useState(false);
 
   const customSpeechRecRef = useRef(null);
+  const customSpeechTranscriptRef = useRef("");
 
   // ═══════════════════════════════════════════════════════════════════════════
   // BLOCK 5 – PEER SPEAKING CLUB
@@ -446,6 +447,7 @@ export default function StudentDashboard() {
   };
 
   const pronunRecRef = useRef(null);
+  const pronunTranscriptRef = useRef("");
 
   const togglePronunListening = () => {
     if (isListeningPronun) {
@@ -457,6 +459,7 @@ export default function StudentDashboard() {
     }
 
     setSpokenText(""); setPronunciationResult(null); setPronunAiTip(null);
+    pronunTranscriptRef.current = "";
     if (typeof window === "undefined") return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { alert("Web Speech Recognition not supported – use Chrome or Edge."); return; }
@@ -465,21 +468,18 @@ export default function StudentDashboard() {
     recognition.lang = "en-US";
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
-    recognition.continuous = false;
+    recognition.continuous = true;
 
     recognition.onstart = () => setIsListeningPronun(true);
-    recognition.onend = () => setIsListeningPronun(false);
-    recognition.onerror = (e) => { console.error(e); setIsListeningPronun(false); };
-    
-    recognition.onresult = (event) => {
-      const resultText = event.results[0]?.[0]?.transcript || "";
-      if (resultText) {
-        setSpokenText(resultText);
+    recognition.onend = () => {
+      setIsListeningPronun(false);
+      const finalVal = pronunTranscriptRef.current.trim();
+      if (finalVal) {
         const cleanTarget = targetWord.toLowerCase().replace(/[^\w\s]/g, "").trim();
-        const cleanSpoken = resultText.toLowerCase().replace(/[^\w\s]/g, "").trim();
+        const cleanSpoken = finalVal.toLowerCase().replace(/[^\w\s]/g, "").trim();
         const correct = cleanTarget === cleanSpoken;
         setPronunciationResult(correct ? "correct" : "incorrect");
-        fetchPronunTip(resultText, correct);
+        fetchPronunTip(finalVal, correct);
 
         if (correct && pronunSetMode !== "default") {
           if (pronunWordIndex === pronunWordsList.length - 1) {
@@ -487,6 +487,21 @@ export default function StudentDashboard() {
             fetchAiFeedback("speech_practice", pronunWordsList.length, pronunWordsList.length);
           }
         }
+      }
+    };
+    recognition.onerror = (e) => { console.error(e); setIsListeningPronun(false); };
+    
+    recognition.onresult = (event) => {
+      let resultText = "";
+      for (let i = 0; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          resultText += event.results[i][0].transcript + " ";
+        }
+      }
+      resultText = resultText.trim();
+      if (resultText) {
+        pronunTranscriptRef.current = resultText;
+        setSpokenText(resultText);
       }
     };
 
@@ -530,6 +545,7 @@ export default function StudentDashboard() {
     }
 
     setCustomSpokenText(""); setCustomSpeechResult(null); setCustomSpeechAiTip(null);
+    customSpeechTranscriptRef.current = "";
     if (typeof window === "undefined") return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { alert("Web Speech Recognition not supported – use Chrome or Edge."); return; }
@@ -538,22 +554,19 @@ export default function StudentDashboard() {
     recognition.lang = "en-US";
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
-    recognition.continuous = false;
+    recognition.continuous = true;
 
     recognition.onstart = () => setIsListeningCustomSpeech(true);
-    recognition.onend = () => setIsListeningCustomSpeech(false);
-    recognition.onerror = (e) => { console.error(e); setIsListeningCustomSpeech(false); };
-    
-    recognition.onresult = (event) => {
-      const resultText = event.results[0]?.[0]?.transcript || "";
-      if (resultText) {
-        setCustomSpokenText(resultText);
+    recognition.onend = () => {
+      setIsListeningCustomSpeech(false);
+      const finalVal = customSpeechTranscriptRef.current.trim();
+      if (finalVal) {
         const target = customSpeechWords[customSpeechIndex];
         const cleanTarget = target.toLowerCase().replace(/[^\w\s]/g, "").trim();
-        const cleanSpoken = resultText.toLowerCase().replace(/[^\w\s]/g, "").trim();
+        const cleanSpoken = finalVal.toLowerCase().replace(/[^\w\s]/g, "").trim();
         const correct = cleanTarget === cleanSpoken;
         setCustomSpeechResult(correct ? "correct" : "incorrect");
-        fetchCustomSpeechTip(resultText, correct);
+        fetchCustomSpeechTip(finalVal, correct);
         
         if (correct && activeAssignment) {
           if (customSpeechIndex === customSpeechWords.length - 1) {
@@ -561,6 +574,21 @@ export default function StudentDashboard() {
             fetchAiFeedback("speech_practice", customSpeechWords.length, customSpeechWords.length);
           }
         }
+      }
+    };
+    recognition.onerror = (e) => { console.error(e); setIsListeningCustomSpeech(false); };
+    
+    recognition.onresult = (event) => {
+      let resultText = "";
+      for (let i = 0; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          resultText += event.results[i][0].transcript + " ";
+        }
+      }
+      resultText = resultText.trim();
+      if (resultText) {
+        customSpeechTranscriptRef.current = resultText;
+        setCustomSpokenText(resultText);
       }
     };
 
@@ -597,6 +625,7 @@ export default function StudentDashboard() {
   }, [messages, isAiTyping]);
 
   const chatRecRef = useRef(null);
+  const chatTranscriptRef = useRef("");
 
   const toggleChatDictation = () => {
     if (isListeningChat) {
@@ -607,6 +636,7 @@ export default function StudentDashboard() {
       return;
     }
 
+    chatTranscriptRef.current = "";
     if (typeof window === "undefined") return;
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { alert("Web Speech Recognition not supported – use Chrome or Edge."); return; }
@@ -614,16 +644,28 @@ export default function StudentDashboard() {
     const recognition = new SR();
     recognition.lang = "en-US";
     recognition.interimResults = false;
-    recognition.continuous = false;
+    recognition.continuous = true;
 
     recognition.onstart  = () => setIsListeningChat(true);
-    recognition.onend    = () => setIsListeningChat(false);
+    recognition.onend    = () => {
+      setIsListeningChat(false);
+      const finalVal = chatTranscriptRef.current.trim();
+      if (finalVal) {
+        setChatInput(prev => prev ? `${prev} ${finalVal}` : finalVal);
+      }
+    };
     recognition.onerror  = (e) => { console.error(e); setIsListeningChat(false); };
     
     recognition.onresult = (event) => {
-      const resultText = event.results[0]?.[0]?.transcript || "";
+      let resultText = "";
+      for (let i = 0; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          resultText += event.results[i][0].transcript + " ";
+        }
+      }
+      resultText = resultText.trim();
       if (resultText) {
-        setChatInput(prev => prev ? `${prev} ${resultText}` : resultText);
+        chatTranscriptRef.current = resultText;
       }
     };
 
