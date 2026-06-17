@@ -620,45 +620,7 @@ export default function StudentDashboard() {
     { id: 1, sender: "ai", text: "Hello! Welcome to the AI Speaking Club. I am Coach Vibe, your personal English language coach. What topic would you like to speak about today?" }
   ]);
 
-  // Load AI Speaking Club conversation history from Supabase
-  useEffect(() => {
-    if (activeBlock !== "chat" || !studentId) return;
-
-    const fetchChatHistory = async () => {
-      try {
-        const { data, error } = await supabase
-          .from("speaking_messages")
-          .select("*")
-          .eq("student_id", studentId)
-          .order("created_at", { ascending: true });
-        
-        if (error) throw error;
-        
-        if (data && data.length > 0) {
-          const formatted = data.map(m => ({
-            id: m.id,
-            sender: m.sender,
-            text: m.text,
-            feedback: m.feedback,
-            corrections: m.corrections || [],
-            upgrade: m.upgrade,
-            vocabBoost: m.vocab_boost,
-            scores: m.scores,
-            showFeedback: true
-          }));
-          setMessages(formatted);
-        } else {
-          setMessages([
-            { id: "welcome", sender: "ai", text: "Hello! Welcome to the AI Speaking Club. I am Coach Vibe, your personal English language coach. What topic would you like to speak about today?" }
-          ]);
-        }
-      } catch (err) {
-        console.error("Error loading chat history:", err);
-      }
-    };
-
-    fetchChatHistory();
-  }, [activeBlock, studentId]);
+  // Speaking Club messages are managed in-memory to prevent Supabase RLS/table restrictions
 
   useEffect(() => {
     if (chatBottomRef.current) chatBottomRef.current.scrollIntoView({ behavior: "smooth" });
@@ -737,7 +699,7 @@ export default function StudentDashboard() {
 
     try {
       const conversationHistory = messages
-        .filter(m => m.id !== "welcome" && typeof m.id !== "number")
+        .filter(m => m.id !== "welcome" && m.id !== 1)
         .map(m => ({ sender: m.sender, text: m.text }));
       conversationHistory.push({ sender: "user", text: text });
 
@@ -754,52 +716,8 @@ export default function StudentDashboard() {
         const vocabBoostVal = data.vocabBoost || "";
         const scoresVal = data.scores || null;
 
-        let finalUserId = tempUserId;
-        let finalAiId = tempUserId + 1;
-
-        if (studentId) {
-          try {
-            const [userInsertRes, aiInsertRes] = await Promise.all([
-              supabase
-                .from("speaking_messages")
-                .insert({
-                  student_id: studentId,
-                  sender: "user",
-                  text: text,
-                  feedback: greenlineFeedback,
-                  corrections: correctionsList,
-                  upgrade: upgradeVal,
-                  vocab_boost: vocabBoostVal,
-                  scores: scoresVal
-                })
-                .select("id")
-                .single(),
-              supabase
-                .from("speaking_messages")
-                .insert({
-                  student_id: studentId,
-                  sender: "ai",
-                  text: data.reply
-                })
-                .select("id")
-                .single()
-            ]);
-
-            if (!userInsertRes.error && userInsertRes.data) {
-              finalUserId = userInsertRes.data.id;
-            } else {
-              console.error("Failed to save user message to Supabase:", userInsertRes.error);
-            }
-
-            if (!aiInsertRes.error && aiInsertRes.data) {
-              finalAiId = aiInsertRes.data.id;
-            } else {
-              console.error("Failed to save AI message to Supabase:", aiInsertRes.error);
-            }
-          } catch (dbErr) {
-            console.error("Database save failed:", dbErr);
-          }
-        }
+        const finalUserId = tempUserId;
+        const finalAiId = tempUserId + 1;
 
         setMessages(prev => {
           return prev.map(m => {
@@ -828,28 +746,12 @@ export default function StudentDashboard() {
 
       } else {
         const errorText = "I'm sorry, I had trouble responding. Please try again!";
-        let savedErrorId = Date.now() + 1;
-        if (studentId) {
-          const { data: aiInsert } = await supabase
-            .from("speaking_messages")
-            .insert({ student_id: studentId, sender: "ai", text: errorText })
-            .select("id").single();
-          if (aiInsert) savedErrorId = aiInsert.id;
-        }
-        setMessages(prev => [...prev, { id: savedErrorId, sender: "ai", text: errorText }]);
+        setMessages(prev => [...prev, { id: Date.now() + 1, sender: "ai", text: errorText }]);
       }
     } catch (err) {
       console.error("Chat error:", err);
       const connErrorText = "Connection issue — please check your internet and try again.";
-      let savedErrorId = Date.now() + 1;
-      if (studentId) {
-        const { data: aiInsert } = await supabase
-          .from("speaking_messages")
-          .insert({ student_id: studentId, sender: "ai", text: connErrorText })
-          .select("id").single();
-        if (aiInsert) savedErrorId = aiInsert.id;
-      }
-      setMessages(prev => [...prev, { id: savedErrorId, sender: "ai", text: connErrorText }]);
+      setMessages(prev => [...prev, { id: Date.now() + 1, sender: "ai", text: connErrorText }]);
     } finally {
       setIsAiTyping(false);
     }
