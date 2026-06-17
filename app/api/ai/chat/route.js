@@ -11,39 +11,40 @@ export async function POST(request) {
       return NextResponse.json({ error: "No message provided" }, { status: 400 });
     }
 
-    // Build conversation history for context
-    const history = (messages || [])
-      .filter((m) => m.sender !== "system")
-      .slice(-10) // last 10 messages for context
+    // Build conversation history for context (exclude duplicates of the current userMessage)
+    const historyMessages = (messages || []).filter((m) => m.sender !== "system");
+    if (historyMessages.length > 0 && historyMessages[historyMessages.length - 1].text === userMessage) {
+      historyMessages.pop();
+    }
+
+    const history = historyMessages
+      .slice(-8) // last 8 messages for context
       .map((m) => `${m.sender === "ai" ? "Coach Vibe" : "Student"}: ${m.text}`)
       .join("\n");
 
-    const prompt = `You are "Coach Vibe", an expert English speaking coach on the LingoVibe platform.
-Your mission is to help the student improve their speaking skills, expand their vocabulary, build grammatical accuracy, and gain confidence.
+    const chatPrompt = `You are "Coach Vibe", an expert, friendly English speaking partner (Gemini) on LingoVibe.
+Your goal is to conduct a natural, engaging conversation with the student.
 
-Your role & style:
-1. Warm, encouraging, and highly pedagogical. Speak like a real, supportive teacher.
-2. In your main response (3-4 sentences max):
-   - Acknowledge and comment on what the student said.
-   - Give a brief, supportive comment about their language use (e.g., "I love how you used..." or "Good try on...").
-   - Ask an engaging, open-ended question that prompts them to speak and elaborate.
-   - Challenge them with a mini-task for their next message (e.g., "For your next reply, try to use the word '...' or try to use a conditional sentence!").
-3. Do NOT make the main response too long; keep it clean and conversational.
-
-Pedagogical analysis (Coaching Data):
-- Identify any grammar mistakes, spelling errors, or awkward phrasings. Provide corrections with brief, clear explanations.
-- Provide a "Better/Natural Way to Say It" (upgrade/recast) that elevates their message to native-like quality.
-- Provide a "Vocabulary Boost" with 1-2 advanced words or idioms related to the topic, complete with definition and a quick example.
+Guidelines:
+1. Talk like a real, supportive, and natural English partner.
+2. Respond directly and fully to what the student said or asked. If they ask a question (e.g. about animals or "what is the baby of a cow"), make sure to answer it clearly and correctly!
+3. Keep your response conversational, warm, and relatively brief (2-4 sentences max).
+4. End your message with an open-ended question that prompts them to continue speaking.
+5. Do NOT output any JSON, brackets, or code. Write ONLY the natural conversational reply.
 
 Previous conversation history:
 ${history || "(This is the start of the conversation)"}
 
-Student just said: "${userMessage}"
+Student: "${userMessage}"`;
 
-Respond naturally as Coach Vibe. Include corrections only if needed. Keep it conversational and brief.
+    const coachPrompt = `You are an expert English language speaking coach. Analyze the student's message in the context of the conversation.
 
-Provide your pedagogical feedback in JSON format at the very end of your response, enclosed in [COACHING: ...] tags, like this:
-[COACHING: {
+Student message to analyze: "${userMessage}"
+
+Analyze the student's grammar, vocabulary, spelling, and sentence structure.
+Provide your pedagogical feedback in this EXACT JSON format (pure JSON, no markdown codeblocks):
+{
+  "greenline": "A short, encouraging 1-sentence feedback about the student's message (max 15 words) highlighting their correctness or a key improvement.",
   "corrections": [
     {
       "wrong": "the exact phrase the student wrote with a mistake",
@@ -51,92 +52,53 @@ Provide your pedagogical feedback in JSON format at the very end of your respons
       "explanation": "Brief explanation of the grammar rule or why it was wrong."
     }
   ],
-  "upgrade": "A more advanced, natural, or native-sounding way to rephrase their message.",
+  "upgrade": "A more advanced, natural, or native-sounding way to rephrase the student's message.",
   "vocabBoost": "1-2 useful advanced words or idioms related to the topic with brief definitions.",
   "scores": {
-    "fluency": "Short 3-5 word assessment of student message fluency/naturalness",
-    "vocabulary": "Short 3-5 word assessment of student vocabulary use",
-    "grammar": "Short 3-5 word assessment of student grammar accuracy"
+    "fluency": "Short 3-5 word assessment of the student's message fluency/naturalness (e.g., 'Good flow, very natural' or 'A bit fragmented, try connectors')",
+    "vocabulary": "Short 3-5 word assessment of vocabulary use (e.g., 'Clear vocabulary, try synonyms' or 'Excellent animal vocabulary!')",
+    "grammar": "Short 3-5 word assessment of grammar accuracy (e.g., 'Minor punctuation missing' or 'Perfect tense usage!')"
   }
-}]`;
+}`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        temperature: 0.85,
-        maxOutputTokens: 500,
-      },
-    });
+    // Run both calls in parallel to maximize speed and guarantee formatting
+    const [chatResponse, coachResponse] = await Promise.all([
+      ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: chatPrompt,
+        config: {
+          temperature: 0.8,
+        },
+      }),
+      ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: coachPrompt,
+        config: {
+          responseMimeType: "application/json",
+          temperature: 0.2,
+        },
+      }),
+    ]);
 
-    const fullText = response.text;
-
-    // Robustly parse out the COACHING JSON block
-    let replyText = fullText;
+    const reply = chatResponse.text.trim();
     let corrections = [];
     let upgrade = "";
     let vocabBoost = "";
     let scores = null;
+    let greenline = "";
 
-    let jsonStartIndex = fullText.toLowerCase().lastIndexOf("coaching");
-    if (jsonStartIndex === -1) {
-      jsonStartIndex = fullText.indexOf("{");
-    } else {
-      jsonStartIndex = fullText.indexOf("{", jsonStartIndex);
+    try {
+      const parsed = JSON.parse(coachResponse.text.trim());
+      corrections = parsed.corrections || [];
+      upgrade = parsed.upgrade || "";
+      vocabBoost = parsed.vocabBoost || "";
+      scores = parsed.scores || null;
+      greenline = parsed.greenline || "";
+    } catch (e) {
+      console.error("[AI Chat] Coach parse error:", e, coachResponse.text);
     }
 
-    if (jsonStartIndex !== -1) {
-      const jsonEndIndex = fullText.lastIndexOf("}");
-      if (jsonEndIndex !== -1 && jsonEndIndex > jsonStartIndex) {
-        let jsonStr = fullText.slice(jsonStartIndex, jsonEndIndex + 1).trim();
-        
-        // Strip markdown code block wraps if present
-        if (jsonStr.startsWith("```json")) {
-          jsonStr = jsonStr.slice(7).trim();
-        } else if (jsonStr.startsWith("```")) {
-          jsonStr = jsonStr.slice(3).trim();
-        }
-        if (jsonStr.endsWith("```")) {
-          jsonStr = jsonStr.slice(0, -3).trim();
-        }
-
-        try {
-          const parsed = JSON.parse(jsonStr);
-          corrections = parsed.corrections || [];
-          upgrade = parsed.upgrade || "";
-          vocabBoost = parsed.vocabBoost || "";
-          scores = parsed.scores || null;
-
-          // Strip the coaching block from the main reply
-          let truncateIndex = fullText.toLowerCase().lastIndexOf("[coaching");
-          if (truncateIndex === -1) {
-            truncateIndex = fullText.toLowerCase().lastIndexOf("coaching");
-          }
-          if (truncateIndex === -1) {
-            truncateIndex = jsonStartIndex;
-          }
-          replyText = fullText.slice(0, truncateIndex).trim();
-        } catch (e) {
-          console.error("JSON parse failed for string:", jsonStr, e);
-          // Regex fallback
-          const coachingMatch = fullText.match(/\[COACHING:\s*(\{.*\})\]/is);
-          if (coachingMatch) {
-            try {
-              const parsed = JSON.parse(coachingMatch[1]);
-              corrections = parsed.corrections || [];
-              upgrade = parsed.upgrade || "";
-              vocabBoost = parsed.vocabBoost || "";
-              scores = parsed.scores || null;
-              replyText = fullText.replace(/\[COACHING:.*?\]/is, "").trim();
-            } catch (err) {
-              console.error("Regex fallback parsing failed:", err);
-            }
-          }
-        }
-      }
-    }
-
-    return NextResponse.json({ reply: replyText, corrections, upgrade, vocabBoost, scores });
+    return NextResponse.json({ reply, corrections, upgrade, vocabBoost, scores, greenline });
   } catch (err) {
     console.error("[AI Chat] Error:", err);
     return NextResponse.json(

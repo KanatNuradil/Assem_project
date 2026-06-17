@@ -694,6 +694,14 @@ export default function StudentDashboard() {
       });
       const data = await res.json();
       if (data.reply) {
+        setMessages(prev => {
+          return prev.map(m => {
+            if (m.id === userMsg.id) {
+              return { ...m, feedback: data.greenline || "Good attempt! See detailed tips below." };
+            }
+            return m;
+          });
+        });
         setMessages(prev => [...prev, { id: Date.now() + 1, sender: "ai", text: data.reply }]);
         if (data.corrections?.length > 0) setCorrections(data.corrections);
         if (data.upgrade) setChatUpgrade(data.upgrade);
@@ -1477,10 +1485,20 @@ export default function StudentDashboard() {
 
                   <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-brand-soft/20">
                     {messages.map((msg) => (
-                      <div key={msg.id} className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
-                        <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm font-semibold shadow-sm leading-relaxed ${msg.sender === "user" ? "bg-brand-primary text-white rounded-tr-none" : "bg-white text-brand-dark border border-purple-50 rounded-tl-none"}`}>
-                          <p>{msg.text}</p>
+                      <div key={msg.id} className="space-y-1">
+                        <div className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
+                          <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm font-semibold shadow-sm leading-relaxed ${msg.sender === "user" ? "bg-brand-primary text-white rounded-tr-none" : "bg-white text-brand-dark border border-purple-50 rounded-tl-none"}`}>
+                            <p>{msg.text}</p>
+                          </div>
                         </div>
+                        {msg.sender === "user" && msg.feedback && (
+                          <div className="flex justify-end pr-2">
+                            <div className="max-w-[75%] border-l-2 border-brand-success bg-emerald-50/70 rounded-r-xl px-3 py-1.5 text-[11px] text-emerald-800 font-bold shadow-sm flex items-center gap-1.5">
+                              <span className="text-xs">💡</span>
+                              <span>{msg.feedback}</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                     {isAiTyping && (
