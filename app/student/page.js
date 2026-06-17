@@ -620,6 +620,46 @@ export default function StudentDashboard() {
     { id: 1, sender: "ai", text: "Hello! Welcome to the AI Speaking Club. I am Coach Vibe, your personal English language coach. What topic would you like to speak about today?" }
   ]);
 
+  // Load AI Speaking Club conversation history from Supabase
+  useEffect(() => {
+    if (activeBlock !== "chat" || !studentId) return;
+
+    const fetchChatHistory = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("speaking_messages")
+          .select("*")
+          .eq("student_id", studentId)
+          .order("created_at", { ascending: true });
+        
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          const formatted = data.map(m => ({
+            id: m.id,
+            sender: m.sender,
+            text: m.text,
+            feedback: m.feedback,
+            corrections: m.corrections || [],
+            upgrade: m.upgrade,
+            vocabBoost: m.vocab_boost,
+            scores: m.scores,
+            showFeedback: true
+          }));
+          setMessages(formatted);
+        } else {
+          setMessages([
+            { id: "welcome", sender: "ai", text: "Hello! Welcome to the AI Speaking Club. I am Coach Vibe, your personal English language coach. What topic would you like to speak about today?" }
+          ]);
+        }
+      } catch (err) {
+        console.error("Error loading chat history:", err);
+      }
+    };
+
+    fetchChatHistory();
+  }, [activeBlock, studentId]);
+
   useEffect(() => {
     if (chatBottomRef.current) chatBottomRef.current.scrollIntoView({ behavior: "smooth" });
   }, [messages, isAiTyping]);
@@ -676,10 +716,8 @@ export default function StudentDashboard() {
   const handleSendMessage = async (e) => {
     if (e) e.preventDefault();
     if (!chatInput.trim()) return;
-    const userMsg = { id: Date.now(), sender: "user", text: chatInput };
-    const currentMessages = [...messages, userMsg];
-    setMessages(currentMessages);
-    const query = chatInput;
+    
+    const text = chatInput.trim();
     setChatInput("");
     setIsAiTyping(true);
     setCorrections([]);
@@ -687,32 +725,131 @@ export default function StudentDashboard() {
     setChatVocabBoost("");
     setChatScores(null);
 
+    const tempUserId = Date.now();
+    const userMsg = { 
+      id: tempUserId, 
+      sender: "user", 
+      text: text,
+      showFeedback: true
+    };
+    
+    setMessages(prev => [...prev, userMsg]);
+
     try {
+      const conversationHistory = messages
+        .filter(m => m.id !== "welcome" && typeof m.id !== "number")
+        .map(m => ({ sender: m.sender, text: m.text }));
+      conversationHistory.push({ sender: "user", text: text });
+
       const res = await fetch("/api/ai/chat", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: currentMessages, userMessage: query }),
+        body: JSON.stringify({ messages: conversationHistory, userMessage: text }),
       });
       const data = await res.json();
+      
       if (data.reply) {
+        const greenlineFeedback = data.greenline || "Good attempt! See detailed tips below.";
+        const correctionsList = data.corrections || [];
+        const upgradeVal = data.upgrade || "";
+        const vocabBoostVal = data.vocabBoost || "";
+        const scoresVal = data.scores || null;
+
+        let finalUserId = tempUserId;
+        let finalAiId = tempUserId + 1;
+
+        if (studentId) {
+          try {
+            const [userInsertRes, aiInsertRes] = await Promise.all([
+              supabase
+                .from("speaking_messages")
+                .insert({
+                  student_id: studentId,
+                  sender: "user",
+                  text: text,
+                  feedback: greenlineFeedback,
+                  corrections: correctionsList,
+                  upgrade: upgradeVal,
+                  vocab_boost: vocabBoostVal,
+                  scores: scoresVal
+                })
+                .select("id")
+                .single(),
+              supabase
+                .from("speaking_messages")
+                .insert({
+                  student_id: studentId,
+                  sender: "ai",
+                  text: data.reply
+                })
+                .select("id")
+                .single()
+            ]);
+
+            if (!userInsertRes.error && userInsertRes.data) {
+              finalUserId = userInsertRes.data.id;
+            } else {
+              console.error("Failed to save user message to Supabase:", userInsertRes.error);
+            }
+
+            if (!aiInsertRes.error && aiInsertRes.data) {
+              finalAiId = aiInsertRes.data.id;
+            } else {
+              console.error("Failed to save AI message to Supabase:", aiInsertRes.error);
+            }
+          } catch (dbErr) {
+            console.error("Database save failed:", dbErr);
+          }
+        }
+
         setMessages(prev => {
           return prev.map(m => {
-            if (m.id === userMsg.id) {
-              return { ...m, feedback: data.greenline || "Good attempt! See detailed tips below." };
+            if (m.id === tempUserId) {
+              return { 
+                ...m, 
+                id: finalUserId,
+                feedback: greenlineFeedback,
+                corrections: correctionsList,
+                upgrade: upgradeVal,
+                vocabBoost: vocabBoostVal,
+                scores: scoresVal,
+                showFeedback: true
+              };
             }
             return m;
           });
         });
-        setMessages(prev => [...prev, { id: Date.now() + 1, sender: "ai", text: data.reply }]);
-        if (data.corrections?.length > 0) setCorrections(data.corrections);
-        if (data.upgrade) setChatUpgrade(data.upgrade);
-        if (data.vocabBoost) setChatVocabBoost(data.vocabBoost);
-        if (data.scores) setChatScores(data.scores);
+
+        setMessages(prev => [...prev, { id: finalAiId, sender: "ai", text: data.reply }]);
+
+        if (correctionsList.length > 0) setCorrections(correctionsList);
+        if (upgradeVal) setChatUpgrade(upgradeVal);
+        if (vocabBoostVal) setChatVocabBoost(vocabBoostVal);
+        if (scoresVal) setChatScores(scoresVal);
+
       } else {
-        setMessages(prev => [...prev, { id: Date.now() + 1, sender: "ai", text: "I'm sorry, I had trouble responding. Please try again!" }]);
+        const errorText = "I'm sorry, I had trouble responding. Please try again!";
+        let savedErrorId = Date.now() + 1;
+        if (studentId) {
+          const { data: aiInsert } = await supabase
+            .from("speaking_messages")
+            .insert({ student_id: studentId, sender: "ai", text: errorText })
+            .select("id").single();
+          if (aiInsert) savedErrorId = aiInsert.id;
+        }
+        setMessages(prev => [...prev, { id: savedErrorId, sender: "ai", text: errorText }]);
       }
     } catch (err) {
       console.error("Chat error:", err);
-      setMessages(prev => [...prev, { id: Date.now() + 1, sender: "ai", text: "Connection issue — please check your internet and try again." }]);
+      const connErrorText = "Connection issue — please check your internet and try again.";
+      let savedErrorId = Date.now() + 1;
+      if (studentId) {
+        const { data: aiInsert } = await supabase
+          .from("speaking_messages")
+          .insert({ student_id: studentId, sender: "ai", text: connErrorText })
+          .select("id").single();
+        if (aiInsert) savedErrorId = aiInsert.id;
+      }
+      setMessages(prev => [...prev, { id: savedErrorId, sender: "ai", text: connErrorText }]);
     } finally {
       setIsAiTyping(false);
     }
@@ -1494,39 +1631,101 @@ export default function StudentDashboard() {
 
                   <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-brand-soft/20">
                     {messages.map((msg) => (
-                      <div key={msg.id} className="space-y-1">
+                      <div key={msg.id} className="space-y-1.5">
                         <div className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
                           <div 
-                            onClick={msg.sender === "user" && msg.feedback ? () => toggleMessageFeedback(msg.id) : undefined}
-                            className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm font-semibold shadow-sm leading-relaxed ${msg.sender === "user" ? "bg-brand-primary text-white rounded-tr-none" : "bg-white text-brand-dark border border-purple-50 rounded-tl-none"} ${msg.sender === "user" && msg.feedback ? "cursor-pointer hover:bg-brand-light transition-all" : ""}`}
-                            title={msg.sender === "user" && msg.feedback ? "Click to toggle AI feedback" : undefined}
+                            onClick={msg.sender === "user" && (msg.feedback || msg.scores || msg.corrections?.length > 0 || msg.upgrade || msg.vocabBoost) ? () => toggleMessageFeedback(msg.id) : undefined}
+                            className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm font-semibold shadow-sm leading-relaxed ${msg.sender === "user" ? "bg-brand-primary text-white rounded-tr-none" : "bg-white text-brand-dark border border-purple-50 rounded-tl-none"} ${msg.sender === "user" && (msg.feedback || msg.scores || msg.corrections?.length > 0 || msg.upgrade || msg.vocabBoost) ? "cursor-pointer hover:bg-brand-light transition-all" : ""}`}
+                            title={msg.sender === "user" && (msg.feedback || msg.scores || msg.corrections?.length > 0 || msg.upgrade || msg.vocabBoost) ? "Click to toggle AI feedback" : undefined}
                           >
                             <p>{msg.text}</p>
                           </div>
                         </div>
-                        {msg.sender === "user" && msg.feedback && msg.showFeedback !== false && (
-                          <div className="flex justify-end pr-2">
-                            <div className="max-w-[75%] border-l-2 border-brand-success bg-emerald-50/70 rounded-r-xl px-3 py-1.5 text-[11px] text-emerald-800 font-bold shadow-sm flex items-center justify-between gap-1.5">
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-xs">💡</span>
-                                <span>{msg.feedback}</span>
+
+                        {/* Inline Feedback Card */}
+                        {msg.sender === "user" && (msg.feedback || msg.scores || msg.corrections?.length > 0 || msg.upgrade || msg.vocabBoost) && msg.showFeedback !== false && (
+                          <div className="flex justify-end pr-2 animate-fadeIn">
+                            <div className="max-w-[85%] w-full border border-violet-100 bg-violet-50/90 rounded-2xl p-4 text-[12px] text-brand-dark font-medium shadow-sm space-y-3 relative">
+                              <div className="flex items-center justify-between border-b border-violet-100 pb-2">
+                                <span className="font-bold text-violet-700 flex items-center gap-1.5">
+                                  <span>💡</span> AI Coach Review
+                                </span>
+                                <button 
+                                  type="button" 
+                                  onClick={(e) => { e.stopPropagation(); toggleMessageFeedback(msg.id); }} 
+                                  className="text-[10px] text-violet-500 hover:text-violet-750 font-bold uppercase tracking-wider cursor-pointer border border-violet-200/50 hover:bg-violet-150/50 px-2 py-0.5 rounded-md transition-all shrink-0"
+                                >
+                                  Hide
+                                </button>
                               </div>
-                              <button 
-                                type="button" 
-                                onClick={(e) => { e.stopPropagation(); toggleMessageFeedback(msg.id); }} 
-                                className="text-[9px] text-emerald-600 hover:text-emerald-800 font-bold uppercase tracking-wider cursor-pointer border border-emerald-200/50 hover:bg-emerald-100/30 px-1.5 py-0.5 rounded-md transition-all shrink-0 ml-2"
-                              >
-                                Hide
-                              </button>
+
+                              {/* Greenline brief feedback */}
+                              {msg.feedback && (
+                                <div className="text-emerald-800 font-bold bg-emerald-50/60 border-l-2 border-emerald-500 px-2.5 py-1 rounded-r-lg leading-relaxed">
+                                  {msg.feedback}
+                                </div>
+                              )}
+
+                              {/* Ratings */}
+                              {msg.scores && (
+                                <div className="grid grid-cols-3 gap-2 text-[10px]">
+                                  <div className="bg-blue-50/80 p-2 rounded-xl border border-blue-100/40">
+                                    <span className="block font-black text-blue-600 uppercase text-[8px] mb-0.5">🗣️ Fluency</span>
+                                    <span className="font-bold text-blue-900 leading-tight block">{msg.scores.fluency}</span>
+                                  </div>
+                                  <div className="bg-emerald-50/80 p-2 rounded-xl border border-emerald-100/40">
+                                    <span className="block font-black text-emerald-600 uppercase text-[8px] mb-0.5">📚 Vocab</span>
+                                    <span className="font-bold text-emerald-900 leading-tight block">{msg.scores.vocabulary}</span>
+                                  </div>
+                                  <div className="bg-purple-50/80 p-2 rounded-xl border border-purple-100/40">
+                                    <span className="block font-black text-purple-600 uppercase text-[8px] mb-0.5">✍️ Grammar</span>
+                                    <span className="font-bold text-purple-900 leading-tight block">{msg.scores.grammar}</span>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Corrections */}
+                              {msg.corrections && msg.corrections.length > 0 && (
+                                <div className="space-y-1">
+                                  <span className="text-[9px] font-black text-amber-600 uppercase block tracking-wider">Corrections</span>
+                                  <div className="space-y-1.5">
+                                    {msg.corrections.map((c, idx) => (
+                                      <div key={idx} className="bg-amber-50/60 rounded-lg p-2 border border-amber-100 text-[11px] leading-tight">
+                                        <span className="text-red-500 line-through font-medium">{c.wrong}</span>
+                                        <span className="mx-1.5 text-amber-500 font-bold">→</span>
+                                        <span className="text-emerald-600 font-bold">{c.correct}</span>
+                                        {c.explanation && <p className="text-amber-805/85 mt-0.5 text-[10px] font-semibold">{c.explanation}</p>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Rephrasing */}
+                              {msg.upgrade && (
+                                <div className="bg-violet-100/50 p-2.5 rounded-xl border border-violet-200/40">
+                                  <span className="text-[9px] font-black text-violet-600 uppercase block mb-0.5">Native Rephrasing</span>
+                                  <p className="text-[11px] text-violet-900 font-semibold leading-relaxed">{msg.upgrade}</p>
+                                </div>
+                              )}
+
+                              {/* Vocab Boost */}
+                              {msg.vocabBoost && (
+                                <div className="bg-emerald-50/50 p-2.5 rounded-xl border border-emerald-200/40">
+                                  <span className="text-[9px] font-black text-emerald-600 uppercase block mb-0.5">Vocabulary Boost</span>
+                                  <p className="text-[11px] text-emerald-900 font-semibold leading-relaxed">{msg.vocabBoost}</p>
+                                </div>
+                              )}
                             </div>
                           </div>
                         )}
-                        {msg.sender === "user" && msg.feedback && msg.showFeedback === false && (
+
+                        {msg.sender === "user" && (msg.feedback || msg.scores || msg.corrections?.length > 0 || msg.upgrade || msg.vocabBoost) && msg.showFeedback === false && (
                           <div className="flex justify-end pr-2">
                             <button 
                               type="button"
                               onClick={(e) => { e.stopPropagation(); toggleMessageFeedback(msg.id); }} 
-                              className="text-[10px] text-emerald-600 hover:text-emerald-800 font-bold flex items-center gap-1 hover:underline cursor-pointer bg-emerald-50/40 border border-emerald-100/30 px-2.5 py-0.5 rounded-full shadow-sm animate-fadeIn"
+                              className="text-[10px] text-violet-600 hover:text-violet-800 font-bold flex items-center gap-1 hover:underline cursor-pointer bg-violet-50 border border-violet-100 px-3 py-1 rounded-full shadow-sm animate-fadeIn"
                             >
                               <span>👁️ Show AI Feedback</span>
                             </button>
@@ -1561,71 +1760,8 @@ export default function StudentDashboard() {
                     </button>
                   </form>
                 </div>
-
-                {/* AI Speaking Coach Feedback Panel */}
-                {(corrections.length > 0 || chatUpgrade || chatVocabBoost || chatScores) && (
-                  <div className="bg-white rounded-3xl border border-violet-100 shadow-md p-6 space-y-4">
-                    <div className="flex items-center gap-2 border-b border-violet-50 pb-3">
-                      <span className="text-xl">💡</span>
-                      <h5 className="font-bold text-brand-dark text-sm">AI Speaking Coach Feedback</h5>
-                    </div>
-
-                    {/* Performance Ratings (Fluency, Vocabulary, Grammar) */}
-                    {chatScores && (
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 border-b border-violet-50 pb-2">
-                        <div className="bg-blue-50/60 p-3 rounded-xl border border-blue-100/50">
-                          <p className="text-[10px] font-black text-blue-600 uppercase mb-1">🗣️ Fluency</p>
-                          <p className="text-xs text-blue-900 font-bold leading-tight">{chatScores.fluency}</p>
-                        </div>
-                        <div className="bg-emerald-50/60 p-3 rounded-xl border border-emerald-100/50">
-                          <p className="text-[10px] font-black text-emerald-600 uppercase mb-1">📚 Vocabulary</p>
-                          <p className="text-xs text-emerald-900 font-bold leading-tight">{chatScores.vocabulary}</p>
-                        </div>
-                        <div className="bg-purple-50/60 p-3 rounded-xl border border-purple-100/50">
-                          <p className="text-[10px] font-black text-purple-600 uppercase mb-1">✍️ Grammar</p>
-                          <p className="text-xs text-purple-900 font-bold leading-tight">{chatScores.grammar}</p>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Grammar & Spelling Corrections */}
-                    {corrections.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Grammar & Spelling Corrections</p>
-                        <div className="grid gap-2">
-                          {corrections.map((c, i) => (
-                            <div key={i} className="bg-amber-50/50 rounded-xl p-3 border border-amber-100 text-xs">
-                              <span className="text-red-500 line-through font-medium">{c.wrong}</span>
-                              <span className="mx-2 text-amber-500 font-bold">→</span>
-                              <span className="text-emerald-600 font-bold">{c.correct}</span>
-                              {c.explanation && <p className="text-amber-805/80 mt-1 font-semibold">{c.explanation}</p>}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Upgrade Recast */}
-                    {chatUpgrade && (
-                      <div className="space-y-1 bg-violet-50 p-4 rounded-xl border border-violet-100">
-                        <p className="text-[10px] font-bold text-violet-500 uppercase">Native Rephrasing (Upgrade)</p>
-                        <p className="text-xs text-violet-850 font-bold leading-relaxed">{chatUpgrade}</p>
-                      </div>
-                    )}
-
-                    {/* Vocabulary Boost */}
-                    {chatVocabBoost && (
-                      <div className="space-y-1 bg-emerald-50/60 p-4 rounded-xl border border-emerald-100">
-                        <p className="text-[10px] font-bold text-emerald-600 uppercase">Vocabulary Boost</p>
-                        <p className="text-xs text-emerald-850 font-semibold leading-relaxed">{chatVocabBoost}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             )}
-
-            {/* ═══ BLOCK 5: PEER SPEAKING CLUB ═══ */}
             {activeBlock === "peer_chat" && (
               <div className="max-w-4xl mx-auto space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

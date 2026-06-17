@@ -53,6 +53,20 @@ CREATE TABLE IF NOT EXISTS public.peer_messages (
     created_at   TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
 );
 
+-- 1e. speaking_messages — AI Speaking Club conversations history (persisted in DB)
+CREATE TABLE IF NOT EXISTS public.speaking_messages (
+    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id  UUID        NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    sender      TEXT        NOT NULL CHECK (sender IN ('user', 'ai')),
+    text        TEXT        NOT NULL,
+    feedback    TEXT        DEFAULT NULL,
+    corrections JSONB       DEFAULT NULL,
+    upgrade     TEXT        DEFAULT NULL,
+    vocab_boost TEXT        DEFAULT NULL,
+    scores      JSONB       DEFAULT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT timezone('utc', now())
+);
+
 -- ─────────────────────────────────────────────────────────────────────
 -- SECTION 2: ENABLE ROW LEVEL SECURITY
 -- ─────────────────────────────────────────────────────────────────────
@@ -61,6 +75,7 @@ ALTER TABLE public.profiles        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.assignments     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.student_progress ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.peer_messages    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.speaking_messages ENABLE ROW LEVEL SECURITY;
 
 -- ─────────────────────────────────────────────────────────────────────
 -- SECTION 3: RLS POLICIES
@@ -171,6 +186,21 @@ CREATE POLICY "Users can insert own peer messages" ON public.peer_messages
 DROP POLICY IF EXISTS "Users can read own peer conversations" ON public.peer_messages;
 CREATE POLICY "Users can read own peer conversations" ON public.peer_messages
     FOR SELECT USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
+
+-- ── speaking_messages ──────────────────────────────────────────────────
+DROP POLICY IF EXISTS "Students can insert own speaking messages" ON public.speaking_messages;
+CREATE POLICY "Students can insert own speaking messages" ON public.speaking_messages
+    FOR INSERT WITH CHECK (auth.uid() = student_id);
+
+DROP POLICY IF EXISTS "Students can read own speaking conversations" ON public.speaking_messages;
+CREATE POLICY "Students can read own speaking conversations" ON public.speaking_messages
+    FOR SELECT USING (
+        auth.uid() = student_id 
+        OR EXISTS (
+            SELECT 1 FROM public.profiles 
+            WHERE id = auth.uid() AND role = 'teacher'
+        )
+    );
 
 -- ─────────────────────────────────────────────────────────────────────
 -- SECTION 4: TRIGGER — Auto-create profile on Auth sign-up

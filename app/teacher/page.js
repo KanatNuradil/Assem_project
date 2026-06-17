@@ -39,6 +39,46 @@ export default function TeacherDashboard() {
   const [toastMessage, setToastMessage] = useState("");
   const [showToast, setShowToast] = useState(false);
 
+  // AI Speaking Club history modal states
+  const [viewingChatStudent, setViewingChatStudent] = useState(null);
+  const [studentChatHistory, setStudentChatHistory] = useState([]);
+  const [isLoadingChat, setIsLoadingChat] = useState(false);
+
+  const handleViewSpeakingHistory = async (student) => {
+    setViewingChatStudent(student);
+    setIsLoadingChat(true);
+    setStudentChatHistory([]);
+    try {
+      const { data, error } = await supabase
+        .from("speaking_messages")
+        .select("*")
+        .eq("student_id", student.id)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const formatted = data.map(m => ({
+          id: m.id,
+          sender: m.sender,
+          text: m.text,
+          feedback: m.feedback,
+          corrections: m.corrections || [],
+          upgrade: m.upgrade,
+          vocabBoost: m.vocab_boost,
+          scores: m.scores,
+          created_at: m.created_at
+        }));
+        setStudentChatHistory(formatted);
+      } else {
+        setStudentChatHistory([]);
+      }
+    } catch (err) {
+      console.error("Error fetching student speaking history:", err);
+    } finally {
+      setIsLoadingChat(false);
+    }
+  };
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       const storedName = localStorage.getItem("userName");
@@ -392,6 +432,7 @@ export default function TeacherDashboard() {
                         <th className="py-4.5 px-6 text-center">English Level</th>
                         <th className="py-4.5 px-6">Task Progress</th>
                         <th className="py-4.5 px-6">Last Active</th>
+                        <th className="py-4.5 px-6 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-purple-50/50">
@@ -425,6 +466,15 @@ export default function TeacherDashboard() {
                             </div>
                           </td>
                           <td className="py-4.5 px-6 text-xs text-brand-dark/50 font-semibold">{student.lastActive}</td>
+                          <td className="py-4.5 px-6 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleViewSpeakingHistory(student)}
+                              className="px-3.5 py-1.5 bg-violet-50 text-violet-600 hover:bg-violet-100 hover:text-violet-750 rounded-xl text-xs font-bold transition-all border border-violet-100/50 cursor-pointer"
+                            >
+                              💬 View Chat
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -470,6 +520,16 @@ export default function TeacherDashboard() {
                       <div className="text-[11px] text-brand-dark/45 font-bold flex justify-between">
                         <span>Last login activity</span>
                         <span>{student.lastActive}</span>
+                      </div>
+
+                      <div className="pt-2 flex justify-end border-t border-purple-50/50 mt-3 pt-3">
+                        <button
+                          type="button"
+                          onClick={() => handleViewSpeakingHistory(student)}
+                          className="w-full py-2 bg-violet-50 text-violet-600 hover:bg-violet-100 hover:text-violet-750 rounded-xl text-xs font-bold transition-all border border-violet-100/50 flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          💬 View AI Speaking Club Chat
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -741,6 +801,136 @@ export default function TeacherDashboard() {
 
         </div>
       </main>
+
+      {/* Speaking History Modal */}
+      {viewingChatStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/40 backdrop-blur-sm p-4 md:p-6 animate-fadeIn">
+          <div className="bg-white w-full max-w-3xl h-[85vh] rounded-3xl border border-purple-100 shadow-2xl flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-brand-bg border-b border-purple-100 flex items-center justify-between shrink-0">
+              <div>
+                <h3 className="font-black text-brand-dark text-base">
+                  AI Speaking Club History
+                </h3>
+                <p className="text-xs text-brand-dark/60 font-semibold mt-0.5">
+                  Student: <span className="text-brand-primary font-bold">{viewingChatStudent.name}</span> ({viewingChatStudent.email})
+                </p>
+              </div>
+              <button
+                onClick={() => setViewingChatStudent(null)}
+                className="w-8 h-8 rounded-full bg-purple-50 text-brand-primary hover:bg-brand-primary hover:text-white transition-all flex items-center justify-center font-bold text-sm cursor-pointer shadow-sm border-0"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Chat Messages */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-brand-soft/20">
+              {isLoadingChat ? (
+                <div className="h-full flex flex-col items-center justify-center gap-3 text-brand-primary">
+                  <div className="w-8 h-8 border-4 border-brand-primary border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm font-bold">Loading conversation history…</span>
+                </div>
+              ) : studentChatHistory.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center text-brand-dark/50 p-6">
+                  <span className="text-3xl mb-2">💬</span>
+                  <p className="text-sm font-bold">No conversation history yet.</p>
+                  <p className="text-xs mt-1">This student has not started any conversations in the AI Speaking Club.</p>
+                </div>
+              ) : (
+                studentChatHistory.map((msg) => (
+                  <div key={msg.id} className="space-y-1.5">
+                    <div className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
+                      <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm font-semibold shadow-sm leading-relaxed ${msg.sender === "user" ? "bg-brand-primary text-white rounded-tr-none" : "bg-white text-brand-dark border border-purple-50 rounded-tl-none"}`}>
+                        <p>{msg.text}</p>
+                      </div>
+                    </div>
+
+                    {/* Inline Feedback Card for Teacher */}
+                    {msg.sender === "user" && (msg.feedback || msg.scores || msg.corrections?.length > 0 || msg.upgrade || msg.vocabBoost) && (
+                      <div className="flex justify-end pr-2">
+                        <div className="max-w-[85%] w-full border border-violet-100 bg-violet-50/90 rounded-2xl p-4 text-[12px] text-brand-dark font-medium shadow-sm space-y-3">
+                          <div className="flex items-center gap-1.5 border-b border-violet-100 pb-1.5 font-bold text-violet-700">
+                            <span>💡</span> AI Coach Review
+                          </div>
+
+                          {/* Greenline brief feedback */}
+                          {msg.feedback && (
+                            <div className="text-emerald-800 font-bold bg-emerald-50/60 border-l-2 border-emerald-500 px-2.5 py-1 rounded-r-lg leading-relaxed">
+                              {msg.feedback}
+                            </div>
+                          )}
+
+                          {/* Ratings */}
+                          {msg.scores && (
+                            <div className="grid grid-cols-3 gap-2 text-[10px]">
+                              <div className="bg-blue-50/80 p-2 rounded-xl border border-blue-100/40">
+                                <span className="block font-black text-blue-600 uppercase text-[8px] mb-0.5">🗣️ Fluency</span>
+                                <span className="font-bold text-blue-900 leading-tight block">{msg.scores.fluency}</span>
+                              </div>
+                              <div className="bg-emerald-50/80 p-2 rounded-xl border border-emerald-100/40">
+                                <span className="block font-black text-emerald-600 uppercase text-[8px] mb-0.5">📚 Vocab</span>
+                                <span className="font-bold text-emerald-900 leading-tight block">{msg.scores.vocabulary}</span>
+                              </div>
+                              <div className="bg-purple-50/80 p-2 rounded-xl border border-purple-100/40">
+                                <span className="block font-black text-purple-600 uppercase text-[8px] mb-0.5">✍️ Grammar</span>
+                                <span className="font-bold text-purple-900 leading-tight block">{msg.scores.grammar}</span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Corrections */}
+                          {msg.corrections && msg.corrections.length > 0 && (
+                            <div className="space-y-1">
+                              <span className="text-[9px] font-black text-amber-600 uppercase block tracking-wider">Corrections</span>
+                              <div className="space-y-1.5">
+                                {msg.corrections.map((c, idx) => (
+                                  <div key={idx} className="bg-amber-50/60 rounded-lg p-2 border border-amber-100 text-[11px] leading-tight">
+                                    <span className="text-red-500 line-through font-medium">{c.wrong}</span>
+                                    <span className="mx-1.5 text-amber-500 font-bold">→</span>
+                                    <span className="text-emerald-600 font-bold">{c.correct}</span>
+                                    {c.explanation && <p className="text-amber-800/80 mt-0.5 text-[10px] font-semibold">{c.explanation}</p>}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Rephrasing */}
+                          {msg.upgrade && (
+                            <div className="bg-violet-100/50 p-2.5 rounded-xl border border-violet-200/40">
+                              <span className="text-[9px] font-black text-violet-600 uppercase block mb-0.5">Native Rephrasing</span>
+                              <p className="text-[11px] text-violet-900 font-semibold leading-relaxed">{msg.upgrade}</p>
+                            </div>
+                          )}
+
+                          {/* Vocab Boost */}
+                          {msg.vocabBoost && (
+                            <div className="bg-emerald-50/50 p-2.5 rounded-xl border border-emerald-200/40">
+                              <span className="text-[9px] font-black text-emerald-600 uppercase block mb-0.5">Vocabulary Boost</span>
+                              <p className="text-[11px] text-emerald-900 font-semibold leading-relaxed">{msg.vocabBoost}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 bg-brand-bg border-t border-purple-100 flex justify-end shrink-0">
+              <button
+                onClick={() => setViewingChatStudent(null)}
+                className="px-6 py-2 bg-brand-primary hover:bg-brand-light text-white font-bold rounded-xl text-xs transition-all shadow-md cursor-pointer border-0"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
