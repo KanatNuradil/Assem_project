@@ -718,6 +718,15 @@ export default function StudentDashboard() {
     }
   };
 
+  const toggleMessageFeedback = (msgId) => {
+    setMessages(prev => prev.map(m => {
+      if (m.id === msgId) {
+        return { ...m, showFeedback: m.showFeedback === undefined ? false : !m.showFeedback };
+      }
+      return m;
+    }));
+  };
+
   // ═══════════════════════════════════════════════════════════════════════════
   // BLOCK 5 Helper Functions & Effects
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1487,16 +1496,40 @@ export default function StudentDashboard() {
                     {messages.map((msg) => (
                       <div key={msg.id} className="space-y-1">
                         <div className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}>
-                          <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm font-semibold shadow-sm leading-relaxed ${msg.sender === "user" ? "bg-brand-primary text-white rounded-tr-none" : "bg-white text-brand-dark border border-purple-50 rounded-tl-none"}`}>
+                          <div 
+                            onClick={msg.sender === "user" && msg.feedback ? () => toggleMessageFeedback(msg.id) : undefined}
+                            className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm font-semibold shadow-sm leading-relaxed ${msg.sender === "user" ? "bg-brand-primary text-white rounded-tr-none" : "bg-white text-brand-dark border border-purple-50 rounded-tl-none"} ${msg.sender === "user" && msg.feedback ? "cursor-pointer hover:bg-brand-light transition-all" : ""}`}
+                            title={msg.sender === "user" && msg.feedback ? "Click to toggle AI feedback" : undefined}
+                          >
                             <p>{msg.text}</p>
                           </div>
                         </div>
-                        {msg.sender === "user" && msg.feedback && (
+                        {msg.sender === "user" && msg.feedback && msg.showFeedback !== false && (
                           <div className="flex justify-end pr-2">
-                            <div className="max-w-[75%] border-l-2 border-brand-success bg-emerald-50/70 rounded-r-xl px-3 py-1.5 text-[11px] text-emerald-800 font-bold shadow-sm flex items-center gap-1.5">
-                              <span className="text-xs">💡</span>
-                              <span>{msg.feedback}</span>
+                            <div className="max-w-[75%] border-l-2 border-brand-success bg-emerald-50/70 rounded-r-xl px-3 py-1.5 text-[11px] text-emerald-800 font-bold shadow-sm flex items-center justify-between gap-1.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs">💡</span>
+                                <span>{msg.feedback}</span>
+                              </div>
+                              <button 
+                                type="button" 
+                                onClick={(e) => { e.stopPropagation(); toggleMessageFeedback(msg.id); }} 
+                                className="text-[9px] text-emerald-600 hover:text-emerald-800 font-bold uppercase tracking-wider cursor-pointer border border-emerald-200/50 hover:bg-emerald-100/30 px-1.5 py-0.5 rounded-md transition-all shrink-0 ml-2"
+                              >
+                                Hide
+                              </button>
                             </div>
+                          </div>
+                        )}
+                        {msg.sender === "user" && msg.feedback && msg.showFeedback === false && (
+                          <div className="flex justify-end pr-2">
+                            <button 
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); toggleMessageFeedback(msg.id); }} 
+                              className="text-[10px] text-emerald-600 hover:text-emerald-800 font-bold flex items-center gap-1 hover:underline cursor-pointer bg-emerald-50/40 border border-emerald-100/30 px-2.5 py-0.5 rounded-full shadow-sm animate-fadeIn"
+                            >
+                              <span>👁️ Show AI Feedback</span>
+                            </button>
                           </div>
                         )}
                       </div>

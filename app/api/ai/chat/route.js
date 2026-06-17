@@ -55,9 +55,9 @@ Provide your pedagogical feedback in this EXACT JSON format (pure JSON, no markd
   "upgrade": "A more advanced, natural, or native-sounding way to rephrase the student's message.",
   "vocabBoost": "1-2 useful advanced words or idioms related to the topic with brief definitions.",
   "scores": {
-    "fluency": "Short 3-5 word assessment of the student's message fluency/naturalness (e.g., 'Good flow, very natural' or 'A bit fragmented, try connectors')",
-    "vocabulary": "Short 3-5 word assessment of vocabulary use (e.g., 'Clear vocabulary, try synonyms' or 'Excellent animal vocabulary!')",
-    "grammar": "Short 3-5 word assessment of grammar accuracy (e.g., 'Minor punctuation missing' or 'Perfect tense usage!')"
+    "fluency": "Provide a rating score out of 5 followed by a short comment, formatted EXACTLY like: '4/5 - Good pace and flow' or '3/5 - Fragmented structure'",
+    "vocabulary": "Provide a rating score out of 5 followed by a short comment, formatted EXACTLY like: '5/5 - Excellent word choice' or '3/5 - Try using synonyms'",
+    "grammar": "Provide a rating score out of 5 followed by a short comment, formatted EXACTLY like: '5/5 - Perfect grammar' or '4/5 - Minor spelling issue'"
   }
 }`;
 
