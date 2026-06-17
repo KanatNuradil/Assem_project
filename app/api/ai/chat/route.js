@@ -22,28 +22,23 @@ export async function POST(request) {
       .map((m) => `${m.sender === "ai" ? "Coach Vibe" : "Student"}: ${m.text}`)
       .join("\n");
 
-    const chatPrompt = `You are "Coach Vibe", an expert, friendly English speaking partner (Gemini) on LingoVibe.
-Your goal is to conduct a natural, engaging conversation with the student.
+    const prompt = `You are "Coach Vibe", an expert, friendly English speaking partner and language coach on LingoVibe.
+Your goal is to conduct a natural, engaging conversation with the student, while analyzing their message to provide speaking coaching feedback.
 
 Guidelines:
-1. Talk like a real, supportive, and natural English partner.
-2. Respond directly and fully to what the student said or asked. If they ask a question (e.g. about animals or "what is the baby of a cow"), make sure to answer it clearly and correctly!
+1. Speak like a real, supportive, and natural English partner.
+2. In your "reply" field, respond directly and fully to what the student said or asked. If they ask a question, answer it clearly and correctly!
 3. Keep your response conversational, warm, and relatively brief (2-4 sentences max).
 4. End your message with an open-ended question that prompts them to continue speaking.
-5. Do NOT output any JSON, brackets, or code. Write ONLY the natural conversational reply.
 
 Previous conversation history:
 ${history || "(This is the start of the conversation)"}
 
-Student: "${userMessage}"`;
+Student's latest message to analyze: "${userMessage}"
 
-    const coachPrompt = `You are an expert English language speaking coach. Analyze the student's message in the context of the conversation.
-
-Student message to analyze: "${userMessage}"
-
-Analyze the student's grammar, vocabulary, spelling, and sentence structure.
-Provide your pedagogical feedback in this EXACT JSON format (pure JSON, no markdown codeblocks):
+Provide your response in this EXACT JSON format (pure JSON, no markdown codeblocks):
 {
+  "reply": "Your natural conversational response to the student.",
   "greenline": "A short, encouraging 1-sentence feedback about the student's message (max 15 words) highlighting their correctness or a key improvement.",
   "corrections": [
     {
@@ -61,42 +56,22 @@ Provide your pedagogical feedback in this EXACT JSON format (pure JSON, no markd
   }
 }`;
 
-    // Run both calls in parallel to maximize speed and guarantee formatting
-    const [chatResponse, coachResponse] = await Promise.all([
-      ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: chatPrompt,
-        config: {
-          temperature: 0.8,
-        },
-      }),
-      ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: coachPrompt,
-        config: {
-          responseMimeType: "application/json",
-          temperature: 0.2,
-        },
-      }),
-    ]);
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        temperature: 0.4,
+      },
+    });
 
-    const reply = chatResponse.text.trim();
-    let corrections = [];
-    let upgrade = "";
-    let vocabBoost = "";
-    let scores = null;
-    let greenline = "";
-
-    try {
-      const parsed = JSON.parse(coachResponse.text.trim());
-      corrections = parsed.corrections || [];
-      upgrade = parsed.upgrade || "";
-      vocabBoost = parsed.vocabBoost || "";
-      scores = parsed.scores || null;
-      greenline = parsed.greenline || "";
-    } catch (e) {
-      console.error("[AI Chat] Coach parse error:", e, coachResponse.text);
-    }
+    const parsed = JSON.parse(response.text.trim());
+    const reply = parsed.reply || "Hello! Let's continue practicing English.";
+    const corrections = parsed.corrections || [];
+    const upgrade = parsed.upgrade || "";
+    const vocabBoost = parsed.vocabBoost || parsed.vocab_boost || "";
+    const scores = parsed.scores || null;
+    const greenline = parsed.greenline || "";
 
     return NextResponse.json({ reply, corrections, upgrade, vocabBoost, scores, greenline });
   } catch (err) {
