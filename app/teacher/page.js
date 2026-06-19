@@ -35,6 +35,16 @@ export default function TeacherDashboard() {
   const [assignmentComment, setAssignmentComment] = useState("");
   const [speechWords, setSpeechWords] = useState("");
   
+  // Custom match pairs states
+  const [matchPair1Eng, setMatchPair1Eng] = useState("Acknowledge");
+  const [matchPair1Tr, setMatchPair1Tr]   = useState("Accept/Recognize");
+  const [matchPair2Eng, setMatchPair2Eng] = useState("Redundant");
+  const [matchPair2Tr, setMatchPair2Tr]   = useState("No longer needed");
+  const [matchPair3Eng, setMatchPair3Eng] = useState("Superficial");
+  const [matchPair3Tr, setMatchPair3Tr]   = useState("Only on the surface");
+  const [matchPair4Eng, setMatchPair4Eng] = useState("Mitigate");
+  const [matchPair4Tr, setMatchPair4Tr]   = useState("Make less severe");
+  
   // Notification states
   const [toastMessage, setToastMessage] = useState("");
   const [showToast, setShowToast] = useState(false);
@@ -164,10 +174,10 @@ export default function TeacherDashboard() {
       contentPayload = {
         instructions: questionDetails || "Synonym word match exercise.",
         pairs: [
-          { english: "Acknowledge", translation: "Accept/Recognize" },
-          { english: "Redundant", translation: "No longer needed" },
-          { english: "Superficial", translation: "Only on the surface" },
-          { english: "Mitigate", translation: "Make less severe" }
+          { english: matchPair1Eng, translation: matchPair1Tr },
+          { english: matchPair2Eng, translation: matchPair2Tr },
+          { english: matchPair3Eng, translation: matchPair3Tr },
+          { english: matchPair4Eng, translation: matchPair4Tr }
         ]
       };
     } else if (assignmentType === "sentence") {
@@ -220,6 +230,14 @@ export default function TeacherDashboard() {
       setTargetWord("");
       setTranslationAnswer("");
       setSpeechWords("");
+      setMatchPair1Eng("Acknowledge");
+      setMatchPair1Tr("Accept/Recognize");
+      setMatchPair2Eng("Redundant");
+      setMatchPair2Tr("No longer needed");
+      setMatchPair3Eng("Superficial");
+      setMatchPair3Tr("Only on the surface");
+      setMatchPair4Eng("Mitigate");
+      setMatchPair4Tr("Make less severe");
       setAssignmentComment("");
       setSelectedStudentIds([]);
     } catch (err) {
@@ -578,27 +596,110 @@ export default function TeacherDashboard() {
                     <div className="p-5 rounded-2xl bg-brand-bg/40 border border-brand-primary/10 space-y-4">
                       <h4 className="text-xs font-bold text-brand-primary uppercase tracking-wider">Word Matching Pairs</h4>
                       <p className="text-xs text-brand-dark/60 leading-normal">
-                        Students match key terms with translations. Configure sample pairs below.
+                        Students match key terms with translations. Configure the 4 matching pairs below.
                       </p>
                       
-                      <div className="space-y-3">
+                      <div className="space-y-4">
+                        {/* Pair 1 */}
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <span className="block text-[10px] font-bold text-brand-dark/50 uppercase mb-1.5">English Word</span>
+                            <span className="block text-[10px] font-bold text-brand-dark/55 uppercase mb-1.5">English Word 1</span>
                             <input
                               type="text"
-                              value="Simultaneous"
-                              disabled
-                              className="w-full px-3.5 py-2.5 rounded-xl border border-purple-100 bg-white/70 text-xs text-brand-dark/60 font-semibold"
+                              value={matchPair1Eng}
+                              onChange={(e) => setMatchPair1Eng(e.target.value)}
+                              placeholder="e.g. Acknowledge"
+                              className="w-full px-3.5 py-2.5 rounded-xl border border-purple-100 bg-white focus:outline-none focus:border-brand-primary focus:bg-white transition-all text-xs text-brand-dark font-medium"
+                              required
                             />
                           </div>
                           <div>
-                            <span className="block text-[10px] font-bold text-brand-dark/50 uppercase mb-1.5">Target Translation</span>
+                            <span className="block text-[10px] font-bold text-brand-dark/55 uppercase mb-1.5">Target Translation 1</span>
                             <input
                               type="text"
-                              value="Simultaneo"
-                              disabled
-                              className="w-full px-3.5 py-2.5 rounded-xl border border-purple-100 bg-white/70 text-xs text-brand-dark/60 font-semibold"
+                              value={matchPair1Tr}
+                              onChange={(e) => setMatchPair1Tr(e.target.value)}
+                              placeholder="e.g. Accept/Recognize"
+                              className="w-full px-3.5 py-2.5 rounded-xl border border-purple-100 bg-white focus:outline-none focus:border-brand-primary focus:bg-white transition-all text-xs text-brand-dark font-medium"
+                              required
+                            />
+                          </div>
+                        </div>
+
+                        {/* Pair 2 */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <span className="block text-[10px] font-bold text-brand-dark/55 uppercase mb-1.5">English Word 2</span>
+                            <input
+                              type="text"
+                              value={matchPair2Eng}
+                              onChange={(e) => setMatchPair2Eng(e.target.value)}
+                              placeholder="e.g. Redundant"
+                              className="w-full px-3.5 py-2.5 rounded-xl border border-purple-100 bg-white focus:outline-none focus:border-brand-primary focus:bg-white transition-all text-xs text-brand-dark font-medium"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <span className="block text-[10px] font-bold text-brand-dark/55 uppercase mb-1.5">Target Translation 2</span>
+                            <input
+                              type="text"
+                              value={matchPair2Tr}
+                              onChange={(e) => setMatchPair2Tr(e.target.value)}
+                              placeholder="e.g. No longer needed"
+                              className="w-full px-3.5 py-2.5 rounded-xl border border-purple-100 bg-white focus:outline-none focus:border-brand-primary focus:bg-white transition-all text-xs text-brand-dark font-medium"
+                              required
+                            />
+                          </div>
+                        </div>
+
+                        {/* Pair 3 */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <span className="block text-[10px] font-bold text-brand-dark/55 uppercase mb-1.5">English Word 3</span>
+                            <input
+                              type="text"
+                              value={matchPair3Eng}
+                              onChange={(e) => setMatchPair3Eng(e.target.value)}
+                              placeholder="e.g. Superficial"
+                              className="w-full px-3.5 py-2.5 rounded-xl border border-purple-100 bg-white focus:outline-none focus:border-brand-primary focus:bg-white transition-all text-xs text-brand-dark font-medium"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <span className="block text-[10px] font-bold text-brand-dark/55 uppercase mb-1.5">Target Translation 3</span>
+                            <input
+                              type="text"
+                              value={matchPair3Tr}
+                              onChange={(e) => setMatchPair3Tr(e.target.value)}
+                              placeholder="e.g. Only on the surface"
+                              className="w-full px-3.5 py-2.5 rounded-xl border border-purple-100 bg-white focus:outline-none focus:border-brand-primary focus:bg-white transition-all text-xs text-brand-dark font-medium"
+                              required
+                            />
+                          </div>
+                        </div>
+
+                        {/* Pair 4 */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <span className="block text-[10px] font-bold text-brand-dark/55 uppercase mb-1.5">English Word 4</span>
+                            <input
+                              type="text"
+                              value={matchPair4Eng}
+                              onChange={(e) => setMatchPair4Eng(e.target.value)}
+                              placeholder="e.g. Mitigate"
+                              className="w-full px-3.5 py-2.5 rounded-xl border border-purple-100 bg-white focus:outline-none focus:border-brand-primary focus:bg-white transition-all text-xs text-brand-dark font-medium"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <span className="block text-[10px] font-bold text-brand-dark/55 uppercase mb-1.5">Target Translation 4</span>
+                            <input
+                              type="text"
+                              value={matchPair4Tr}
+                              onChange={(e) => setMatchPair4Tr(e.target.value)}
+                              placeholder="e.g. Make less severe"
+                              className="w-full px-3.5 py-2.5 rounded-xl border border-purple-100 bg-white focus:outline-none focus:border-brand-primary focus:bg-white transition-all text-xs text-brand-dark font-medium"
+                              required
                             />
                           </div>
                         </div>
